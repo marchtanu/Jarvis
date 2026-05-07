@@ -1,6 +1,5 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTextEdit
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QTextCursor
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit
+from PyQt6.QtGui import QTextCursor
 from jarvis.gui.theme import COLORS
 
 
@@ -9,22 +8,36 @@ class TranscriptPanel(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-
-        title = QLabel("LIVE TRANSCRIPT")
-        title.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 9px; letter-spacing: 2px; border: none; padding: 0;")
-        layout.addWidget(title)
+        layout.setSpacing(0)
 
         self._text = QTextEdit()
         self._text.setReadOnly(True)
-        self._text.setPlaceholderText("Recognized speech will appear here...")
-        self._text.setMinimumHeight(80)
+        self._text.setPlaceholderText("Recognized speech appears here…")
+        self._text.setStyleSheet(f"""
+            QTextEdit {{
+                background: transparent;
+                border: none;
+                color: {COLORS['text_body']};
+                font-size: 14px;
+                line-height: 1.55;
+                padding: 0;
+            }}
+        """)
         layout.addWidget(self._text)
 
     def add_text(self, text: str, speaker: str = "USER"):
-        color = COLORS["accent"] if speaker == "USER" else COLORS["success"]
+        if speaker == "USER":
+            tag_color = COLORS["accent"]
+            text_color = COLORS["text"]
+        else:
+            tag_color = COLORS["text_soft"]
+            text_color = COLORS["text_muted"]
+
         self._text.append(
-            f'<span style="color:{COLORS["text_muted"]};font-size:9px;">{speaker}</span>'
-            f'<br><span style="color:{color};font-size:12px;">&ldquo;{text}&rdquo;</span><br>'
+            f'<span style="color:{tag_color}; font-size:11px; font-weight:500; '
+            f'letter-spacing:0.5px;">{speaker}</span>'
+            f'<br>'
+            f'<span style="color:{text_color}; font-size:14px;">{text}</span>'
+            f'<br>'
         )
         self._text.moveCursor(QTextCursor.MoveOperation.End)

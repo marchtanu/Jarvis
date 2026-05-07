@@ -1,6 +1,6 @@
 from datetime import datetime
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QListWidget, QListWidgetItem
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QListWidget, QListWidgetItem
+from PyQt6.QtGui import QColor
 from jarvis.gui.theme import COLORS
 
 
@@ -9,37 +9,32 @@ class HistoryPanel(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-
-        title = QLabel("COMMAND HISTORY")
-        title.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 9px; letter-spacing: 2px; border: none; padding: 0;")
-        layout.addWidget(title)
+        layout.setSpacing(0)
 
         self._list = QListWidget()
         self._list.setStyleSheet(f"""
             QListWidget {{
-                background: {COLORS['surface']};
-                border: 1px solid {COLORS['border']};
-                border-radius: 6px;
-                color: {COLORS['text']};
-                font-size: 10px;
+                background: transparent;
+                border: none;
+                color: {COLORS['text_body']};
+                font-size: 13px;
             }}
             QListWidget::item {{
-                padding: 6px;
-                border-bottom: 1px solid {COLORS['border']};
+                padding: 10px 0;
+                border-bottom: 1px solid {COLORS['border_soft']};
             }}
             QListWidget::item:selected {{
-                background: {COLORS['accent_dim']};
+                background: transparent;
                 color: {COLORS['accent']};
             }}
         """)
-        layout.addWidget(self._list)
+        layout.addWidget(self._list, 1)
 
     def add_entry(self, command: str, response: str | None):
-        ts = datetime.now().strftime("%H:%M:%S")
-        label = f"[{ts}]\n▶ {command}"
+        ts = datetime.now().strftime("%H:%M")
+        label = f"{ts}  {command}"
         if response:
-            label += f"\n◈ {response[:60]}{'...' if len(response) > 60 else ''}"
+            label += f"\n{response[:55]}{'…' if len(response) > 55 else ''}"
         item = QListWidgetItem(label)
-        item.setForeground(Qt.GlobalColor.white)
-        self._list.insertItem(0, item)  # Newest at top
+        item.setForeground(QColor(COLORS["text_body"]))
+        self._list.insertItem(0, item)

@@ -2,9 +2,9 @@ import asyncio
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QFrame, QSplitter, QPushButton, QSizePolicy
+    QLabel, QFrame, QPushButton, QSizePolicy, QScrollArea
 )
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QColor
 
 from jarvis.core.event_bus import event_bus
@@ -17,15 +17,6 @@ from jarvis.gui.components.history_panel import HistoryPanel
 from jarvis.gui.components.debug_panel import DebugPanel
 
 
-def _card(widget: QWidget, stretch: int = 0) -> QFrame:
-    """Wrap a widget in a styled card frame."""
-    frame = QFrame()
-    layout = QVBoxLayout(frame)
-    layout.setContentsMargins(10, 10, 10, 10)
-    layout.addWidget(widget)
-    return frame
-
-
 class JarvisMainWindow(QMainWindow):
     def __init__(self, fsm, mic=None):
         super().__init__()
@@ -33,154 +24,285 @@ class JarvisMainWindow(QMainWindow):
         self._mic = mic
         self._snap_count = 0
 
-        self.setWindowTitle("JARVIS ASSISTANT")
-        self.setMinimumSize(1100, 720)
+        self.setWindowTitle("Jarvis")
+        self.setMinimumSize(1200, 760)
         self.setStyleSheet(STYLESHEET)
 
         self._build_ui()
         self._connect_events()
 
-    # ── UI Construction ──────────────────────────────────────────────────────
+    # ── UI Construction ───────────────────────────────────────────────────────
 
     def _build_ui(self):
         root = QWidget()
+        root.setStyleSheet(f"background: {COLORS['bg']}; border: none;")
         root_layout = QVBoxLayout(root)
-        root_layout.setContentsMargins(8, 8, 8, 8)
-        root_layout.setSpacing(6)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
-        # ── Title bar ────────────────────────────────────────────────────────
-        title_bar = self._make_title_bar()
-        root_layout.addWidget(title_bar)
+        # Global nav bar (Apple-style black bar)
+        root_layout.addWidget(self._make_nav_bar())
 
-        # ── Main content ─────────────────────────────────────────────────────
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        # Main 3-column content area
+        body = QWidget()
+        body.setStyleSheet(f"background: {COLORS['bg']}; border: none;")
+        body_layout = QHBoxLayout(body)
+        body_layout.setContentsMargins(20, 20, 20, 20)
+        body_layout.setSpacing(16)
 
-        # Left panel
         left = self._make_left_panel()
         left.setFixedWidth(220)
-        splitter.addWidget(left)
+        body_layout.addWidget(left)
 
-        # Center panel
         center = self._make_center_panel()
-        splitter.addWidget(center)
+        body_layout.addWidget(center, 1)
 
-        # Right panel
         right = self._make_right_panel()
-        right.setFixedWidth(210)
-        splitter.addWidget(right)
+        right.setFixedWidth(220)
+        body_layout.addWidget(right)
 
-        splitter.setStretchFactor(1, 1)
-        root_layout.addWidget(splitter, 1)
+        root_layout.addWidget(body, 1)
 
-        # ── Debug panel ──────────────────────────────────────────────────────
+        # Developer tools bar at bottom
         self._debug_panel = DebugPanel(self._fsm)
-        debug_frame = QFrame()
-        debug_layout = QVBoxLayout(debug_frame)
-        debug_layout.setContentsMargins(0, 0, 0, 0)
-        debug_layout.addWidget(self._debug_panel)
-        root_layout.addWidget(debug_frame)
+        root_layout.addWidget(self._debug_panel)
 
         self.setCentralWidget(root)
 
-    def _make_title_bar(self) -> QWidget:
+    # ── Nav Bar ───────────────────────────────────────────────────────────────
+
+    def _make_nav_bar(self) -> QWidget:
         bar = QWidget()
-        bar.setFixedHeight(48)
-        bar.setStyleSheet(f"background: {COLORS['panel']}; border-radius: 8px;")
+        bar.setFixedHeight(44)
+        bar.setStyleSheet(f"background: {COLORS['nav']}; border: none; border-radius: 0;")
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(16, 0, 16, 0)
+        layout.setContentsMargins(20, 0, 20, 0)
+        layout.setSpacing(12)
 
-        # Logo + title
-        logo = QLabel("◈")
-        logo.setStyleSheet(f"color: {COLORS['accent']}; font-size: 20px; border: none;")
-        layout.addWidget(logo)
+        # Wordmark
+        mark = QLabel("✦")
+        mark.setStyleSheet("color: #CC785C; font-size: 16px; border: none;")
+        layout.addWidget(mark)
 
-        title = QLabel("JARVIS ASSISTANT")
-        title.setStyleSheet(f"color: {COLORS['text']}; font-size: 15px; font-weight: bold; letter-spacing: 3px; border: none;")
+        title = QLabel("Jarvis")
+        title.setStyleSheet(
+            f"color: {COLORS['text_on_dark']}; font-size: 13px; font-weight: 500;"
+            "letter-spacing: -0.1px; border: none;"
+        )
         layout.addWidget(title)
         layout.addStretch()
 
+        # Status badge
+        self._status_badge = QLabel("● Standby")
+        self._status_badge.setStyleSheet(
+            f"color: {COLORS['text_on_dark_muted']}; font-size: 12px; border: none;"
+        )
+        layout.addWidget(self._status_badge)
+
         # Clock
         self._clock_label = QLabel()
-        self._clock_label.setStyleSheet(f"color: {COLORS['text_muted']}; font-family: Consolas; font-size: 12px; border: none;")
+        self._clock_label.setStyleSheet(
+            f"color: {COLORS['text_on_dark_muted']}; font-size: 12px; border: none; margin-left: 16px;"
+        )
         self._update_clock()
-        from PyQt6.QtCore import QTimer
-        self._clock_timer = QTimer(self)
-        self._clock_timer.timeout.connect(self._update_clock)
-        self._clock_timer.start(1000)
+        clock_timer = QTimer(self)
+        clock_timer.timeout.connect(self._update_clock)
+        clock_timer.start(1000)
         layout.addWidget(self._clock_label)
 
         return bar
 
+    # ── Left Panel ────────────────────────────────────────────────────────────
+
     def _make_left_panel(self) -> QFrame:
         frame = QFrame()
+        frame.setStyleSheet(
+            f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
+            "border-radius: 12px; }}"
+        )
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(16, 20, 16, 16)
+        layout.setSpacing(0)
 
-        # State indicator
+        # State panel (custom painted)
         self._state_panel = StatePanel()
         layout.addWidget(self._state_panel)
 
-        # Mic status
-        mic_frame = QFrame()
-        mic_layout = QHBoxLayout(mic_frame)
-        mic_layout.setContentsMargins(8, 6, 8, 6)
-        self._mic_dot = QLabel("●")
-        self._mic_dot.setStyleSheet(f"color: {COLORS['success']}; font-size: 14px; border: none;")
-        mic_layout.addWidget(self._mic_dot)
-        mic_label = QLabel("MICROPHONE")
-        mic_label.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 9px; letter-spacing: 1px; border: none;")
-        mic_layout.addWidget(mic_label)
-        layout.addWidget(mic_frame)
+        # Divider
+        layout.addWidget(self._make_divider())
 
-        # Snap indicator
-        snap_frame = QFrame()
-        snap_layout = QVBoxLayout(snap_frame)
-        snap_layout.setContentsMargins(8, 6, 8, 6)
-        snap_label = QLabel("SNAP DETECTOR")
-        snap_label.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 9px; letter-spacing: 1px; border: none;")
-        snap_layout.addWidget(snap_label)
-        self._snap_dots = QLabel("○  ○")
-        self._snap_dots.setStyleSheet(f"color: {COLORS['border']}; font-size: 18px; border: none;")
-        snap_layout.addWidget(self._snap_dots)
-        layout.addWidget(snap_frame)
+        # Mic status row
+        layout.addWidget(self._make_status_row("mic", "Microphone", active=True))
+
+        # Snap detector
+        layout.addSpacing(8)
+        snap_label = QLabel("Snap detector")
+        snap_label.setStyleSheet(
+            f"color: {COLORS['text_muted']}; font-size: 12px; border: none;"
+        )
+        layout.addWidget(snap_label)
+
+        snap_dots_row = QWidget()
+        snap_dots_row.setStyleSheet("background: transparent; border: none;")
+        snap_dots_layout = QHBoxLayout(snap_dots_row)
+        snap_dots_layout.setContentsMargins(0, 4, 0, 0)
+        snap_dots_layout.setSpacing(6)
+
+        self._snap_dot_1 = QLabel("○")
+        self._snap_dot_1.setStyleSheet(
+            f"color: {COLORS['border']}; font-size: 16px; border: none;"
+        )
+        self._snap_dot_2 = QLabel("○")
+        self._snap_dot_2.setStyleSheet(
+            f"color: {COLORS['border']}; font-size: 16px; border: none;"
+        )
+        snap_dots_layout.addWidget(self._snap_dot_1)
+        snap_dots_layout.addWidget(self._snap_dot_2)
+        snap_dots_layout.addStretch()
+        layout.addWidget(snap_dots_row)
 
         layout.addStretch()
         return frame
 
-    def _make_center_panel(self) -> QFrame:
-        frame = QFrame()
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
+    def _make_status_row(self, kind: str, label: str, active: bool = True) -> QWidget:
+        row = QWidget()
+        row.setStyleSheet("background: transparent; border: none;")
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 8, 0, 0)
+        row_layout.setSpacing(6)
 
-        # Waveform
-        wave_label = QLabel("AUDIO INPUT")
-        wave_label.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 9px; letter-spacing: 2px; border: none;")
-        layout.addWidget(wave_label)
+        dot = QLabel("●")
+        color = COLORS["success"] if active else COLORS["text_soft"]
+        dot.setStyleSheet(f"color: {color}; font-size: 10px; border: none;")
+        row_layout.addWidget(dot)
+
+        lbl = QLabel(label)
+        lbl.setStyleSheet(
+            f"color: {COLORS['text_muted']}; font-size: 13px; border: none;"
+        )
+        row_layout.addWidget(lbl)
+        row_layout.addStretch()
+
+        if kind == "mic":
+            self._mic_dot = dot
+
+        return row
+
+    def _make_divider(self) -> QWidget:
+        line = QWidget()
+        line.setFixedHeight(1)
+        line.setStyleSheet(f"background: {COLORS['border_soft']}; border: none; border-radius: 0;")
+        container = QWidget()
+        container.setStyleSheet("background: transparent; border: none;")
+        l = QVBoxLayout(container)
+        l.setContentsMargins(0, 16, 0, 12)
+        l.addWidget(line)
+        return container
+
+    # ── Center Panel ──────────────────────────────────────────────────────────
+
+    def _make_center_panel(self) -> QWidget:
+        col = QWidget()
+        col.setStyleSheet("background: transparent; border: none;")
+        layout = QVBoxLayout(col)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(14)
+
+        # Audio waveform card
+        wave_card = QFrame()
+        wave_card.setStyleSheet(
+            f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
+            "border-radius: 12px; }}"
+        )
+        wave_card.setFixedHeight(100)
+        wl = QVBoxLayout(wave_card)
+        wl.setContentsMargins(16, 10, 16, 10)
+        wl.setSpacing(4)
+
+        wave_header = QLabel("Audio input")
+        wave_header.setStyleSheet(
+            f"color: {COLORS['text_muted']}; font-size: 11px; font-weight: 500;"
+            "letter-spacing: 0.3px; text-transform: uppercase; border: none;"
+        )
+        wl.addWidget(wave_header)
+
         self._waveform = WaveformWidget()
-        self._waveform.setFixedHeight(90)
-        layout.addWidget(self._waveform)
+        wl.addWidget(self._waveform, 1)
+        layout.addWidget(wave_card)
 
-        # Transcript
+        # Transcript + Response split
+        split = QWidget()
+        split.setStyleSheet("background: transparent; border: none;")
+        split_layout = QHBoxLayout(split)
+        split_layout.setContentsMargins(0, 0, 0, 0)
+        split_layout.setSpacing(14)
+
+        # Transcript card
+        transcript_card = QFrame()
+        transcript_card.setStyleSheet(
+            f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
+            "border-radius: 12px; }}"
+        )
+        tl = QVBoxLayout(transcript_card)
+        tl.setContentsMargins(16, 16, 16, 16)
+        tl.setSpacing(10)
+        t_header = QLabel("Live transcript")
+        t_header.setStyleSheet(
+            f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
+            "letter-spacing: -0.1px; border: none;"
+        )
+        tl.addWidget(t_header)
         self._transcript = TranscriptPanel()
-        layout.addWidget(self._transcript, 1)
+        tl.addWidget(self._transcript, 1)
+        split_layout.addWidget(transcript_card, 1)
 
-        # Response
+        # Response card
+        response_card = QFrame()
+        response_card.setStyleSheet(
+            f"QFrame {{ background: {COLORS['panel_soft']}; border: 1px solid {COLORS['border']};"
+            "border-radius: 12px; }}"
+        )
+        rl = QVBoxLayout(response_card)
+        rl.setContentsMargins(16, 16, 16, 16)
+        rl.setSpacing(10)
+        r_header = QLabel("Jarvis response")
+        r_header.setStyleSheet(
+            f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
+            "letter-spacing: -0.1px; border: none;"
+        )
+        rl.addWidget(r_header)
         self._response = ResponsePanel()
-        layout.addWidget(self._response, 1)
+        rl.addWidget(self._response, 1)
+        split_layout.addWidget(response_card, 1)
 
-        return frame
+        layout.addWidget(split, 1)
+        return col
+
+    # ── Right Panel ───────────────────────────────────────────────────────────
 
     def _make_right_panel(self) -> QFrame:
         frame = QFrame()
+        frame.setStyleSheet(
+            f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
+            "border-radius: 12px; }}"
+        )
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(16, 20, 16, 16)
+        layout.setSpacing(10)
+
+        header = QLabel("Command history")
+        header.setStyleSheet(
+            f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
+            "letter-spacing: -0.1px; border: none;"
+        )
+        layout.addWidget(header)
+        layout.addWidget(self._make_divider())
+
         self._history = HistoryPanel()
-        layout.addWidget(self._history)
+        layout.addWidget(self._history, 1)
         return frame
 
-    # ── Event Bus Bridge ─────────────────────────────────────────────────────
+    # ── Event Wiring ──────────────────────────────────────────────────────────
 
     def _connect_events(self):
         event_bus.subscribe("STATE_CHANGED",    self._on_state_changed)
@@ -192,9 +314,13 @@ class JarvisMainWindow(QMainWindow):
         event_bus.subscribe("APP_EXIT",         self._on_app_exit)
 
     async def _on_state_changed(self, data: dict):
-        self._state_panel.set_state(data["state"], data["label"], data.get("message", ""))
-        # Hide the GUI when returning to standby
-        if data["state"] == "STANDBY":
+        state = data["state"]
+        label = data["label"]
+        self._state_panel.set_state(state, label, data.get("message", ""))
+        color = STATE_COLORS.get(state, COLORS["text_muted"])
+        self._status_badge.setText(f"● {label}")
+        self._status_badge.setStyleSheet(f"color: {color}; font-size: 12px; border: none;")
+        if state == "STANDBY":
             self.hide()
 
     async def _on_speech_recognized(self, data: dict):
@@ -208,39 +334,46 @@ class JarvisMainWindow(QMainWindow):
         self._history.add_entry(data["command"], data.get("response"))
 
     async def _on_home_activated(self, data: dict):
-        """Bring the GUI to the foreground when 'daddy home' is recognised."""
         self.showNormal()
         self.raise_()
         self.activateWindow()
 
     async def _on_app_exit(self, data: dict):
-        """Close the application and exit the loop."""
         self.close()
         from PyQt6.QtWidgets import QApplication
         QApplication.instance().quit()
 
     async def _on_snap(self, data: dict):
         self._snap_count = (self._snap_count % 2) + 1
-        if self._snap_count == 1:
-            self._snap_dots.setStyleSheet(f"color: {COLORS['warning']}; font-size: 18px; border: none;")
-            self._snap_dots.setText("●  ○")
-        else:
-            self._snap_dots.setStyleSheet(f"color: {COLORS['success']}; font-size: 18px; border: none;")
-            self._snap_dots.setText("●  ●")
-        # Reset after 1s
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(1000, lambda: (
-            self._snap_dots.setStyleSheet(f"color: {COLORS['border']}; font-size: 18px; border: none;"),
-            self._snap_dots.setText("○  ○"),
-        ))
+        coral = COLORS["accent"]
+        soft = COLORS["border"]
 
-    # ── Misc ─────────────────────────────────────────────────────────────────
+        if self._snap_count == 1:
+            self._snap_dot_1.setStyleSheet(f"color: {coral}; font-size: 16px; border: none;")
+            self._snap_dot_1.setText("●")
+            self._snap_dot_2.setStyleSheet(f"color: {soft}; font-size: 16px; border: none;")
+            self._snap_dot_2.setText("○")
+        else:
+            self._snap_dot_1.setStyleSheet(f"color: {coral}; font-size: 16px; border: none;")
+            self._snap_dot_1.setText("●")
+            self._snap_dot_2.setStyleSheet(f"color: {coral}; font-size: 16px; border: none;")
+            self._snap_dot_2.setText("●")
+
+        QTimer.singleShot(1000, self._reset_snap_dots)
+
+    def _reset_snap_dots(self):
+        soft = COLORS["border"]
+        self._snap_dot_1.setStyleSheet(f"color: {soft}; font-size: 16px; border: none;")
+        self._snap_dot_1.setText("○")
+        self._snap_dot_2.setStyleSheet(f"color: {soft}; font-size: 16px; border: none;")
+        self._snap_dot_2.setText("○")
+
+    # ── Misc ──────────────────────────────────────────────────────────────────
 
     def _update_clock(self):
-        self._clock_label.setText(datetime.now().strftime("%H:%M:%S"))
+        self._clock_label.setText(datetime.now().strftime("%H:%M"))
 
     def feed_audio(self, chunk):
-        """Called from audio loop to update waveform."""
         import numpy as np
         energy = float(np.sqrt(np.mean(chunk ** 2)))
         self._waveform.add_energy(energy)
