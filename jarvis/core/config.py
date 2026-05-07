@@ -1,29 +1,34 @@
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 @dataclass
 class Config:
-    # Audio Settings
+    # Audio
     SAMPLERATE: int = 44100
     CHANNELS: int = 1
-    BLOCK_SIZE: int = 1024  # Size of audio chunks for processing
-    
+    BLOCK_SIZE: int = 1024
+    MIC_DEVICE_INDEX: int | None = None
+
     # Snap Detection
-    SNAP_THRESHOLD_MULTIPLIER: float = 6.0  # Multiplier over average energy
-    SNAP_REFRACTORY_PERIOD: float = 0.3     # Seconds to ignore after a snap
-    SNAP_WINDOW_TIMEOUT: float = 2.0        # Seconds allowed between snaps
-    
+    SNAP_THRESHOLD_MULTIPLIER: float = 6.0
+    SNAP_REFRACTORY_PERIOD: float = 0.3
+    SNAP_WINDOW_TIMEOUT: float = 2.0
+
+    # Activation Phrases
+    WAKE_PHRASE: str = "daddy home"
+    SHUTDOWN_PHRASE: str = "goodbye jojo"
+    EXIT_PHRASE: str = "exit"
+
     # Speech Recognition
-    VOSK_MODEL_PATH: str = "vosk-model-small-en-us-0.15"         # Path to Vosk model directory
-    COMMAND_TIMEOUT: float = 5.0            # Seconds to listen for command
-    
-    # State Timings
-    ARMED_TIMEOUT: float = 3.0             # How long to stay armed before reverting to idle
-    
-    # Sound Monitoring
-    SOUND_DETECTION_THRESHOLD: float = 0.01  # RMS energy above which we consider sound detected
-    
+    VOSK_MODEL_PATH: str = "vosk-model-small-en-us-0.15"
+    WAKE_WORD_TIMEOUT: float = 8.0
+    COMMAND_TIMEOUT: float = 10.0
+
     # Logging
     LOG_LEVEL: str = "INFO"
+    LOG_FILE: str = "jarvis.log"
+
+    # Sound Monitoring
+    SOUND_DETECTION_THRESHOLD: float = 0.01
 
 config = Config()

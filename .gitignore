@@ -1,0 +1,8 @@
+user
+venv
+__pycache__
+.env
+skills
+.env.example
+jarvis.log
+.pytest_cache
