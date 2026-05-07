@@ -37,6 +37,8 @@ class JarvisStateMachine:
 
     async def start(self):
         event_bus.subscribe("SNAP_DETECTED", self.on_snap_detected)
+        event_bus.subscribe("GESTURE_DETECTED", self.on_gesture_detected)
+        event_bus.subscribe("MOTION_DETECTED", self.on_motion_detected)
         await self._publish_state("Jarvis initialized. Waiting for activation.")
         logger.info("State Machine started in STANDBY.")
 
@@ -193,4 +195,40 @@ class JarvisStateMachine:
 
     async def simulate_shutdown(self):
         if self.state == State.COMMAND_MODE:
-            asyncio.create_task(self._shutdown())
+            asyncio.create_task(self._exit_application())
+
+    # ── Vision Handlers ───────────────────────────────────────────────────────
+
+    async def on_gesture_detected(self, data: dict):
+        gesture = data.get("gesture")
+        confidence = data.get("confidence", 0.0)
+
+        if confidence < 0.7:
+            return
+
+        if gesture == "open_palm":
+            # Wake up Jarvis
+            if self.state in (State.STANDBY, State.SLEEP, State.SNAP_DETECTED):
+                asyncio.create_task(self._enter_command_mode())
+        elif gesture == "fist":
+            # Go to sleep
+            if self.state == State.COMMAND_MODE:
+                asyncio.create_task(self._enter_sleep_mode())
+        
+        await event_bus.publish("JARVIS_RESPONSE", {
+            "text": f"[Vision] Detected gesture: {gesture} ({confidence:.2f})",
+            "type": "info"
+        })
+
+    async def on_motion_detected(self, data: dict):
+        motion = data.get("motion")
+        confidence = data.get("confidence", 0.0)
+        
+        if confidence < 0.4:
+            return
+            
+        # For now, just echo motion to the UI
+        await event_bus.publish("JARVIS_RESPONSE", {
+            "text": f"[Vision] Detected motion: {motion} ({confidence:.2f})",
+            "type": "info"
+        })

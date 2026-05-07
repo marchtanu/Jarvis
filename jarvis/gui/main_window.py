@@ -15,6 +15,7 @@ from jarvis.gui.components.transcript_panel import TranscriptPanel
 from jarvis.gui.components.response_panel import ResponsePanel
 from jarvis.gui.components.history_panel import HistoryPanel
 from jarvis.gui.components.debug_panel import DebugPanel
+from jarvis.gui.components.vision_panel import VisionPanel
 
 
 class JarvisMainWindow(QMainWindow):
@@ -118,7 +119,7 @@ class JarvisMainWindow(QMainWindow):
         frame = QFrame()
         frame.setStyleSheet(
             f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
-            "border-radius: 12px; }}"
+            "border-radius: 12px; }"
         )
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(16, 20, 16, 16)
@@ -212,7 +213,7 @@ class JarvisMainWindow(QMainWindow):
         wave_card = QFrame()
         wave_card.setStyleSheet(
             f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
-            "border-radius: 12px; }}"
+            "border-radius: 12px; }"
         )
         wave_card.setFixedHeight(100)
         wl = QVBoxLayout(wave_card)
@@ -230,6 +231,11 @@ class JarvisMainWindow(QMainWindow):
         wl.addWidget(self._waveform, 1)
         layout.addWidget(wave_card)
 
+        # Vision Panel (Hidden by default)
+        self._vision_panel = VisionPanel()
+        self._vision_panel.hide()
+        layout.addWidget(self._vision_panel)
+
         # Transcript + Response split
         split = QWidget()
         split.setStyleSheet("background: transparent; border: none;")
@@ -241,7 +247,7 @@ class JarvisMainWindow(QMainWindow):
         transcript_card = QFrame()
         transcript_card.setStyleSheet(
             f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
-            "border-radius: 12px; }}"
+            "border-radius: 12px; }"
         )
         tl = QVBoxLayout(transcript_card)
         tl.setContentsMargins(16, 16, 16, 16)
@@ -260,7 +266,7 @@ class JarvisMainWindow(QMainWindow):
         response_card = QFrame()
         response_card.setStyleSheet(
             f"QFrame {{ background: {COLORS['panel_soft']}; border: 1px solid {COLORS['border']};"
-            "border-radius: 12px; }}"
+            "border-radius: 12px; }"
         )
         rl = QVBoxLayout(response_card)
         rl.setContentsMargins(16, 16, 16, 16)
@@ -284,7 +290,7 @@ class JarvisMainWindow(QMainWindow):
         frame = QFrame()
         frame.setStyleSheet(
             f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
-            "border-radius: 12px; }}"
+            "border-radius: 12px; }"
         )
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(16, 20, 16, 16)
@@ -311,6 +317,7 @@ class JarvisMainWindow(QMainWindow):
         event_bus.subscribe("COMMAND_EXECUTED", self._on_command_executed)
         event_bus.subscribe("SNAP_DETECTED",    self._on_snap)
         event_bus.subscribe("HOME_ACTIVATED",   self._on_home_activated)
+        event_bus.subscribe("TOGGLE_VISION",    self._on_toggle_vision)
         event_bus.subscribe("APP_EXIT",         self._on_app_exit)
 
     async def _on_state_changed(self, data: dict):
@@ -337,6 +344,14 @@ class JarvisMainWindow(QMainWindow):
         self.showNormal()
         self.raise_()
         self.activateWindow()
+
+    async def _on_toggle_vision(self, data: dict):
+        if self._vision_panel.isHidden():
+            self._vision_panel.show()
+            self._vision_panel.start()
+        else:
+            self._vision_panel.hide()
+            self._vision_panel.stop()
 
     async def _on_app_exit(self, data: dict):
         self.close()

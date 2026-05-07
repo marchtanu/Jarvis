@@ -78,6 +78,7 @@ class DebugPanel(QWidget):
         self._add_btn(btn_row_layout, "2× Snap",    self._sim_double_snap,  primary=False)
         self._add_btn(btn_row_layout, "Wake word",  self._sim_wake,         primary=False)
         self._add_btn(btn_row_layout, "Daddy home", self._sim_cmd_daddy,    primary=True)
+        self._add_btn(btn_row_layout, "Vision",     self._sim_toggle_vision,primary=False)
         self._add_btn(btn_row_layout, "Shutdown",   self._sim_shutdown,     primary=False)
         btn_row_layout.addStretch()
         btn_layout_outer.addWidget(btn_row)
@@ -184,6 +185,11 @@ class DebugPanel(QWidget):
     def _sim_cmd_daddy(self):
         self._log_event('Simulated: "daddy home"')
         self._run_async(self._fsm._process_command("daddy home"))
+
+    def _sim_toggle_vision(self):
+        self._log_event("Simulated: TOGGLE VISION")
+        from jarvis.core.event_bus import event_bus
+        self._run_async(event_bus.publish("TOGGLE_VISION", {}))
 
     def _sim_shutdown(self):
         self._log_event("Simulated: SHUTDOWN")
