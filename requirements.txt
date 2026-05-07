@@ -1,0 +1,5 @@
+sounddevice==0.4.6
+numpy==1.24.3
+vosk==0.3.45
+SpeechRecognition==3.10.0
+# OpenCV-python (if needed in future)
