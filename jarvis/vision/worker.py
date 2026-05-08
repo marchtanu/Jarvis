@@ -43,6 +43,18 @@ class VisionWorker(QObject):
         
         self.running = False
         
+        # Connect events
+        event_bus.subscribe("SET_ZOOM", self._on_set_zoom)
+        event_bus.subscribe("SET_CAMERA_INDEX", self._on_set_camera_index)
+        
+    def _on_set_zoom(self, data: dict):
+        level = data.get("level", 1.0)
+        self.camera.set_zoom(level)
+
+    def _on_set_camera_index(self, data: dict):
+        index = data.get("index", 0)
+        self.camera.restart(index)
+
     def start(self):
         if not self.running:
             self.camera.start()

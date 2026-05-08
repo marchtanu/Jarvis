@@ -334,6 +334,7 @@ class JarvisMainWindow(QMainWindow):
         event_bus.subscribe("SET_VISION_STATE", self._on_set_vision_state)
         event_bus.subscribe("SET_EYE_STATE",    self._on_set_eye_state)
         event_bus.subscribe("SET_HAND_STATE",   self._on_set_hand_state)
+        event_bus.subscribe("TOGGLE_FULLSCREEN", self._on_toggle_fullscreen)
         event_bus.subscribe("APP_EXIT",         self._on_app_exit)
 
     async def _on_state_changed(self, data: dict):
@@ -377,6 +378,12 @@ class JarvisMainWindow(QMainWindow):
                 self._vision_worker.start()
         elif not state and not self._vision_panel.isHidden():
             self._vision_panel.hide()
+
+    async def _on_toggle_fullscreen(self, data: dict):
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
 
     async def _on_set_eye_state(self, data: dict):
         state = data.get("state", True)

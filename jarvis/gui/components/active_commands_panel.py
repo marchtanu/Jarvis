@@ -22,9 +22,9 @@ class ActiveCommandsPanel(QFrame):
     def _populate_commands(self):
         commands = [
             ("Volume Loop", "Adjust PC volume continuously", "3 fingers up/down"),
-            ("Voice Search", "Listen & search web", "Thumb & Index up"),
+            ("Camera Zoom", "Zoom camera feed in/out", "Rock sign / Thumb & Index"),
             ("Cancel All", "Stop current operations", "2 open palms + Center gaze"),
-            ("Pause Media", "Play/Pause PC audio", "Fist gesture"),
+            ("Pause Media", "Play/Pause PC audio", "Open palm -> Fist"),
             ("Exit Jarvis", "Close application", "Open palm -> Fist (Sleep mode)"),
         ]
         

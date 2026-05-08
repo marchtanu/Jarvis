@@ -54,32 +54,41 @@ class GestureEngine:
         gesture = "none"
         confidence = 0.0
 
-        if index_up and middle_up and ring_up and pinky_up:
+        # Count how many of the 4 main fingers are extended
+        up_count = sum([index_up, middle_up, ring_up, pinky_up])
+        down_count = sum([index_down, middle_down, ring_down, pinky_down])
+
+        if up_count == 4:
             gesture = "open_palm"
-            confidence = 0.9
-        elif not index_up and not middle_up and not ring_up and not pinky_up:
-            # Fingers are curled in (not pointing up). This covers both true fists and relaxed curled fingers.
+            confidence = 0.95
+        elif up_count == 0:
+            # No fingers are up. Check for Thumbs Up specifically.
             if thumb_up and not thumb_out:
                 gesture = "thumbs_up"
-                confidence = 0.8
+                confidence = 0.85
             else:
                 gesture = "fist"
-                confidence = 0.85
-        elif index_up and middle_up and not ring_up and not pinky_up:
-            if thumb_out or thumb_up:
+                confidence = 0.9
+        elif up_count == 2 and index_up and middle_up:
+            # Index and Middle are up. Now check the thumb for Volume Up (3 fingers)
+            if thumb_up or thumb_out:
                 gesture = "three_fingers_up"
-                confidence = 0.85
+                confidence = 0.9
             else:
                 gesture = "peace_sign"
-                confidence = 0.85
-        elif index_down and middle_down and not ring_down and not pinky_down:
-            if thumb_out or thumb_down:
+                confidence = 0.9
+        elif up_count == 2 and index_up and pinky_up:
+            # Rock sign (Index and Pinky)
+            gesture = "rock_sign"
+            confidence = 0.9
+        elif down_count == 2 and index_down and middle_down:
+            # Index and Middle are down. Now check the thumb for Volume Down
+            if thumb_down or thumb_out:
                 gesture = "three_fingers_down"
-                confidence = 0.85
-        elif index_up and not middle_up and not ring_up and not pinky_up:
-            if thumb_out or thumb_up:
-                gesture = "thumb_index_up"
-                confidence = 0.85
+                confidence = 0.9
+        elif up_count == 1 and index_up:
+            gesture = "thumb_index_up"
+            confidence = 0.85
 
         # Apply cooldown
         current_time = time.time()

@@ -69,6 +69,9 @@ async def main():
     # ── Start Audio Hardware ──────────────────────────────────────────────
     mic.start()
     snap_detector.start()
+    
+    # Connect mic to GUI for hardware switching
+    window._debug_panel.set_mic_instance(mic)
 
     logger.info("Jarvis is ready.")
     logger.info(f"  Wake phrase    : '{config.WAKE_PHRASE}'")

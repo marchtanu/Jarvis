@@ -2,6 +2,9 @@ import cv2
 import threading
 import numpy as np
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Camera:
     """
@@ -20,6 +23,11 @@ class Camera:
         self._frame_count = 0
         self._start_time = time.time()
         self._current_fps = 0.0
+        
+        # Digital Zoom
+        self._zoom_level = 1.0  # Current visual zoom
+        self._target_zoom = 1.0 # Desired zoom
+        self._zoom_smoothing = 0.15 # Higher = faster zoom
 
     def start(self):
         if self._running:
@@ -42,6 +50,14 @@ class Camera:
             self.capture.release()
             self.capture = None
 
+    def restart(self, new_index):
+        """Restarts the camera with a new index."""
+        was_running = self._running
+        self.stop()
+        self.camera_index = new_index
+        if was_running:
+            self.start()
+
     def _update(self):
         while self._running:
             if self.capture and self.capture.isOpened():
@@ -49,6 +65,13 @@ class Camera:
                 if ret:
                     # Mirror the frame horizontally for selfie-view
                     frame = cv2.flip(frame, 1)
+                    
+                    # Smooth Zoom Interpolation
+                    if abs(self._zoom_level - self._target_zoom) > 0.01:
+                        self._zoom_level += (self._target_zoom - self._zoom_level) * self._zoom_smoothing
+                    else:
+                        self._zoom_level = self._target_zoom
+
                     with self._lock:
                         self._frame = frame
                     
@@ -65,9 +88,28 @@ class Camera:
 
     def get_frame(self) -> np.ndarray | None:
         with self._lock:
-            if self._frame is not None:
-                return self._frame.copy()
-            return None
+            if self._frame is None:
+                return None
+            
+            frame = self._frame.copy()
+            
+            # Apply digital zoom
+            if self._zoom_level > 1.0:
+                h, w = frame.shape[:2]
+                new_w, new_h = int(w / self._zoom_level), int(h / self._zoom_level)
+                x = (w - new_w) // 2
+                y = (h - new_h) // 2
+                frame = frame[y:y+new_h, x:x+new_w]
+                frame = cv2.resize(frame, (w, h), interpolation=cv2.INTER_LINEAR)
+            
+            return frame
+
+    def set_zoom(self, level: float):
+        self._target_zoom = max(1.0, min(level, 3.0))
+        # logger.info(f"Camera target zoom set to: {self._target_zoom:.2f}x")
+
+    def get_zoom(self) -> float:
+        return self._zoom_level
 
     def get_fps(self) -> float:
         return self._current_fps

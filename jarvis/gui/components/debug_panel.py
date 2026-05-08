@@ -1,7 +1,7 @@
 import asyncio
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTextEdit, QCheckBox
+    QPushButton, QTextEdit, QCheckBox, QComboBox
 )
 from PyQt6.QtCore import Qt
 from jarvis.gui.theme import COLORS
@@ -11,6 +11,7 @@ class DebugPanel(QWidget):
     def __init__(self, fsm, parent=None):
         super().__init__(parent)
         self._fsm = fsm
+        self._mic_instance = None # Set later
         self._mic_enabled = True
 
         # Dark card styling (Claude code-window-card aesthetic)
@@ -18,7 +19,7 @@ class DebugPanel(QWidget):
             f"QWidget {{ background: {COLORS['dark_card']}; border-top: 1px solid {COLORS['border_dark']};"
             "border-radius: 0; }"
         )
-        self.setFixedHeight(140)
+        self.setFixedHeight(180) # Increased height for hardware selectors
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(20, 14, 20, 14)
@@ -45,6 +46,25 @@ class DebugPanel(QWidget):
         )
         self._mic_check.toggled.connect(self._toggle_mic)
         left_layout.addWidget(self._mic_check)
+        
+        # Hardware Selection
+        hw_label = QLabel("Hardware")
+        hw_label.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; margin-top: 5px;")
+        left_layout.addWidget(hw_label)
+        
+        self.cam_select = QComboBox()
+        self.cam_select.setStyleSheet(self._combo_style())
+        left_layout.addWidget(self.cam_select)
+        
+        self.mic_select = QComboBox()
+        self.mic_select.setStyleSheet(self._combo_style())
+        left_layout.addWidget(self.mic_select)
+        
+        self._populate_hardware()
+        
+        self.cam_select.currentIndexChanged.connect(self._on_cam_changed)
+        self.mic_select.currentIndexChanged.connect(self._on_mic_changed)
+
         left_layout.addStretch()
         left.setFixedWidth(160)
         layout.addWidget(left)
@@ -198,6 +218,62 @@ class DebugPanel(QWidget):
     def _toggle_mic(self, enabled: bool):
         self._mic_enabled = enabled
         self._log_event(f"Microphone: {'ON' if enabled else 'OFF'}")
+
+    def _combo_style(self):
+        return f"""
+            QComboBox {{
+                background-color: {COLORS['border_dark']};
+                border: 1px solid {COLORS['border_dark']};
+                border-radius: 4px;
+                color: {COLORS['text_on_dark']};
+                padding: 2px 8px;
+                font-size: 11px;
+            }}
+            QComboBox::drop-down {{ border: none; }}
+            QComboBox QAbstractItemView {{
+                background-color: {COLORS['dark_card']};
+                color: {COLORS['text_on_dark']};
+                selection-background-color: {COLORS['accent']};
+            }}
+        """
+
+    def _populate_hardware(self):
+        # Mics
+        import sounddevice as sd
+        try:
+            devices = sd.query_devices()
+            for i, d in enumerate(devices):
+                if d['max_input_channels'] > 0:
+                    self.mic_select.addItem(f"Mic {i}: {d['name'][:20]}...", i)
+        except Exception as e:
+            self.mic_select.addItem("No Mics Found", -1)
+
+        # Cameras
+        import cv2
+        for i in range(3): # Probe first 3
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                self.cam_select.addItem(f"Camera {i}", i)
+                cap.release()
+        if self.cam_select.count() == 0:
+            self.cam_select.addItem("No Cameras Found", -1)
+
+    def _on_cam_changed(self, index):
+        cam_idx = self.cam_select.currentData()
+        if cam_idx != -1:
+            from jarvis.core.event_bus import event_bus
+            self._run_async(event_bus.publish("SET_CAMERA_INDEX", {"index": cam_idx}))
+            self._log_event(f"Switched to Camera {cam_idx}")
+
+    def _on_mic_changed(self, index):
+        mic_idx = self.mic_select.currentData()
+        if mic_idx != -1 and self._mic_instance:
+            self._log_event(f"Switching Microphone to index {mic_idx}...")
+            self._mic_instance.stop()
+            self._mic_instance.start(device_index=mic_idx)
+
+    def set_mic_instance(self, mic):
+        self._mic_instance = mic
 
     def log(self, msg: str):
         self._log_event(msg)

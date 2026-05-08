@@ -54,6 +54,7 @@ class JarvisStateMachine:
         
         self.next_command_is_search = False
         self.search_prompt_given = False
+        self._zoom_level = 1.0
 
     async def start(self):
         event_bus.subscribe("SNAP_DETECTED", self.on_snap_detected)
@@ -64,6 +65,7 @@ class JarvisStateMachine:
         event_bus.subscribe("CANCEL_ALL", self.on_cancel_all)
         
         asyncio.create_task(self._volume_control_loop())
+        asyncio.create_task(self._zoom_control_loop())
         
         await self._publish_state("Jarvis initialized. Waiting for activation.")
         logger.info("State Machine started in STANDBY.")
@@ -261,42 +263,58 @@ class JarvisStateMachine:
                         asyncio.create_task(self._exit_application())
 
         # 2. Search with voice (thumb_index_up)
-        if gesture == "thumb_index_up":
-            if not getattr(self, "search_prompt_given", False):
-                self.search_prompt_given = True
-                self.next_command_is_search = True
-                await self._publish_state("Listening for search query...")
-                asyncio.create_task(event_bus.publish("JARVIS_RESPONSE", {
-                    "text": "Search mode active. What would you like to find?", 
-                    "type": "info"
-                }))
-                # If Jarvis is asleep, wake him up to listen
-                if self.state not in (State.COMMAND_MODE, State.PROCESSING):
-                    asyncio.create_task(self._enter_command_mode())
+        # Requirement: Only available when NOT in sleep mode
+        # 2. Zoom In/Out gestures
+        # Requirement: Gesture commands disabled in sleep/standby
+        if self.state not in (State.SLEEP, State.STANDBY):
+            if gesture == "rock_sign":
+                 # Zoom in is handled in _zoom_control_loop via current_gesture
+                 pass
+            elif gesture == "thumb_index_up":
+                 # Zoom out is handled in _zoom_control_loop via current_gesture
+                 pass
                 
-        # 3. Fist to pause music
+        # 3. Play/Pause Media: open palm -> fist within 1s
+        # Requirement: Gesture commands disabled in sleep/standby
         if gesture == "fist":
-            if current_time - getattr(self, "last_pause_time", 0.0) > 2.0:
-                self.last_pause_time = current_time
-                import pyautogui
-                pyautogui.press('playpause')
-                asyncio.create_task(event_bus.publish("JARVIS_RESPONSE", {"text": "Media paused/played.", "type": "info"}))
+            if self.state not in (State.SLEEP, State.STANDBY):
+                # Check for sequence: open_palm followed by fist within 1.0s
+                if (current_time - self.last_open_palm_time <= 1.0):
+                    if current_time - getattr(self, "last_pause_time", 0.0) > 2.0:
+                        self.last_pause_time = current_time
+                        import pyautogui
+                        pyautogui.press('playpause')
+                        asyncio.create_task(event_bus.publish("JARVIS_RESPONSE", {"text": "Media paused/played.", "type": "info"}))
 
     async def _volume_control_loop(self):
         import pyautogui
         # Background task for continuous volume control
         while True:
-            # 3. Volume up: three_fingers_up
-            if self.current_gesture == "three_fingers_up":
-                pyautogui.press('volumeup')
-                pyautogui.press('volumeup') # Approximate +2%
-            
-            # 4. Volume down: three_fingers_down
-            elif self.current_gesture == "three_fingers_down":
-                pyautogui.press('volumedown')
-                pyautogui.press('volumedown')
+            # Requirement: Volume control only works when NOT in sleep mode
+            if self.state not in (State.SLEEP, State.STANDBY):
+                # 3. Volume up: three_fingers_up + eye look up
+                if self.current_gesture == "three_fingers_up" :
+                    pyautogui.press('volumeup')
                 
-            await asyncio.sleep(0.5)
+                # 4. Volume down: three_fingers_down + eye look down
+                if self.current_gesture == "three_fingers_down":
+                    pyautogui.press('volumedown')
+                
+            await asyncio.sleep(0.3)
+
+    async def _zoom_control_loop(self):
+        # Background task for continuous zoom control
+        while True:
+            # Allow zoom in standby/command mode, but NOT in sleep mode
+            if self.state != State.SLEEP:
+                if self.current_gesture == "rock_sign":
+                    self._zoom_level = min(3.0, self._zoom_level + 0.1)
+                    await event_bus.publish("SET_ZOOM", {"level": self._zoom_level})
+                elif self.current_gesture == "thumb_index_up":
+                    self._zoom_level = max(1.0, self._zoom_level - 0.1)
+                    await event_bus.publish("SET_ZOOM", {"level": self._zoom_level})
+            
+            await asyncio.sleep(0.1)
 
 
 

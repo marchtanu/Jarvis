@@ -239,6 +239,11 @@ class JarvisAgent:
             await event_bus.publish("SET_VISION_STATE", {"state": False})
             return "Camera deactivated."
             
+        async def toggle_fullscreen():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("TOGGLE_FULLSCREEN", {})
+            return "Toggling full screen mode."
+            
         async def eye_on():
             from jarvis.core.event_bus import event_bus
             await event_bus.publish("SET_EYE_STATE", {"state": True})
@@ -274,6 +279,7 @@ class JarvisAgent:
             (["eyes off", "eye off", "eyes down", "eye down", "stop eye", "deactivate eye", "disable eye"], eye_off),
             (["hands up", "hand up", "hands on", "hand on", "track hand", "track hands", "activate hand", "start hand", "enable hand"], hand_on),
             (["hands down", "hand down", "hands off", "hand off", "stop hand", "deactivate hand", "disable hand"], hand_off),
+            (["full window", "full screen", "maximize window", "maximize"], toggle_fullscreen),
         ]
 
         for keywords, func in mapping:

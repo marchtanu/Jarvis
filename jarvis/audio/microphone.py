@@ -16,15 +16,16 @@ class Microphone:
             logger.warning(f"Audio stream status: {status}")
         self.audio_queue.put(indata.copy())
 
-    def start(self):
+    def start(self, device_index=None):
         self.stream = sd.InputStream(
+            device=device_index,
             samplerate=config.SAMPLERATE,
             channels=config.CHANNELS,
             blocksize=config.BLOCK_SIZE,
             callback=self._callback
         )
         self.stream.start()
-        logger.info("Microphone stream started.")
+        logger.info(f"Microphone stream started (Device: {device_index if device_index is not None else 'Default'}).")
 
     def stop(self):
         if self.stream:
