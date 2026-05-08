@@ -27,18 +27,44 @@ STATE_LABELS = {
     State.SHUTDOWN:         "Shutting Down",
 }
 
+# Behavioral States from Vision Subsystem
+class BehavioralState(Enum):
+    USER_PRESENT = auto()
+    USER_ENGAGED = auto()
+    USER_DISTRACTED = auto()
+    USER_FOCUSED = auto()
+    USER_IDLE = auto()
+    USER_ABSENT = auto()
+
+
 
 class JarvisStateMachine:
     def __init__(self, speech_recognizer, agent):
         self.state = State.STANDBY
+        self.behavioral_state = BehavioralState.USER_ABSENT
         self.speech_recognizer = speech_recognizer
         self.agent = agent
         self.last_snap_time = 0.0
+        
+        self.current_gaze = "unknown"
+        self.current_gesture = "none"
+        self.last_open_palm_time = 0.0
+        self.last_pause_time = 0.0
+        self.last_exit_time = 0.0
+        
+        self.next_command_is_search = False
+        self.search_prompt_given = False
 
     async def start(self):
         event_bus.subscribe("SNAP_DETECTED", self.on_snap_detected)
         event_bus.subscribe("GESTURE_DETECTED", self.on_gesture_detected)
         event_bus.subscribe("MOTION_DETECTED", self.on_motion_detected)
+        event_bus.subscribe("ATTENTION_CHANGED", self.on_attention_changed)
+        event_bus.subscribe("GAZE_CHANGED", self.on_gaze_changed)
+        event_bus.subscribe("CANCEL_ALL", self.on_cancel_all)
+        
+        asyncio.create_task(self._volume_control_loop())
+        
         await self._publish_state("Jarvis initialized. Waiting for activation.")
         logger.info("State Machine started in STANDBY.")
 
@@ -119,13 +145,23 @@ class JarvisStateMachine:
             )
 
             if not text:
-                await event_bus.publish("JARVIS_RESPONSE", {
-                    "text": "I didn't catch that. Still listening...",
-                    "type": "info",
-                })
+                if not self.next_command_is_search:
+                    await event_bus.publish("JARVIS_RESPONSE", {
+                        "text": "I didn't catch that. Still listening...",
+                        "type": "info",
+                    })
+                else:
+                    self.next_command_is_search = False
+                    self.search_prompt_given = False
+                    await self._publish_state("Search cancelled (timeout).")
                 continue
 
             await event_bus.publish("SPEECH_RECOGNIZED", {"text": text})
+
+            if self.next_command_is_search:
+                text = f"search {text}"
+                self.next_command_is_search = False
+                self.search_prompt_given = False
 
             if config.EXIT_PHRASE in text:
                 await self._exit_application()
@@ -199,6 +235,9 @@ class JarvisStateMachine:
 
     # ── Vision Handlers ───────────────────────────────────────────────────────
 
+    async def on_gaze_changed(self, data: dict):
+        self.current_gaze = data.get("direction", "unknown")
+
     async def on_gesture_detected(self, data: dict):
         gesture = data.get("gesture")
         confidence = data.get("confidence", 0.0)
@@ -206,19 +245,73 @@ class JarvisStateMachine:
         if confidence < 0.7:
             return
 
-        if gesture == "open_palm":
-            # Wake up Jarvis
-            if self.state in (State.STANDBY, State.SLEEP, State.SNAP_DETECTED):
-                asyncio.create_task(self._enter_command_mode())
-        elif gesture == "fist":
-            # Go to sleep
-            if self.state == State.COMMAND_MODE:
-                asyncio.create_task(self._enter_sleep_mode())
-        
-        await event_bus.publish("JARVIS_RESPONSE", {
-            "text": f"[Vision] Detected gesture: {gesture} ({confidence:.2f})",
-            "type": "info"
-        })
+        self.current_gesture = gesture
+
+        import time
+        current_time = time.time()
+
+        # 1. Exit command: eye look directly at camera + open palm -> fist within 1s
+        if self.state in (State.SLEEP, State.STANDBY):
+            if gesture == "open_palm":
+                self.last_open_palm_time = current_time
+            elif gesture == "fist":
+                if (current_time - self.last_open_palm_time <= 1.0) and self.current_gaze == "center":
+                    if current_time - getattr(self, "last_exit_time", 0.0) > 2.0:
+                        self.last_exit_time = current_time
+                        asyncio.create_task(self._exit_application())
+
+        # 2. Search with voice (thumb_index_up)
+        if gesture == "thumb_index_up":
+            if not getattr(self, "search_prompt_given", False):
+                self.search_prompt_given = True
+                self.next_command_is_search = True
+                await self._publish_state("Listening for search query...")
+                asyncio.create_task(event_bus.publish("JARVIS_RESPONSE", {
+                    "text": "Search mode active. What would you like to find?", 
+                    "type": "info"
+                }))
+                # If Jarvis is asleep, wake him up to listen
+                if self.state not in (State.COMMAND_MODE, State.PROCESSING):
+                    asyncio.create_task(self._enter_command_mode())
+                
+        # 3. Fist to pause music
+        if gesture == "fist":
+            if current_time - getattr(self, "last_pause_time", 0.0) > 2.0:
+                self.last_pause_time = current_time
+                import pyautogui
+                pyautogui.press('playpause')
+                asyncio.create_task(event_bus.publish("JARVIS_RESPONSE", {"text": "Media paused/played.", "type": "info"}))
+
+    async def _volume_control_loop(self):
+        import pyautogui
+        # Background task for continuous volume control
+        while True:
+            # 3. Volume up: three_fingers_up
+            if self.current_gesture == "three_fingers_up":
+                pyautogui.press('volumeup')
+                pyautogui.press('volumeup') # Approximate +2%
+            
+            # 4. Volume down: three_fingers_down
+            elif self.current_gesture == "three_fingers_down":
+                pyautogui.press('volumedown')
+                pyautogui.press('volumedown')
+                
+            await asyncio.sleep(0.5)
+
+
+
+    async def on_cancel_all(self, data: dict):
+        """Triggered by two-hand open palm gesture. Resets active processing."""
+        if self.state == State.PROCESSING:
+            self.state = State.COMMAND_MODE
+            await self._publish_state("All operations cancelled.")
+            await event_bus.publish("JARVIS_RESPONSE", {
+                "text": "Operations cancelled by user gesture.",
+                "type": "warning"
+            })
+        elif self.state == State.WAITING_WAKE_WORD:
+            self.state = State.STANDBY
+            await self._publish_state("Cancelled. Returning to standby.")
 
     async def on_motion_detected(self, data: dict):
         motion = data.get("motion")
@@ -232,3 +325,13 @@ class JarvisStateMachine:
             "text": f"[Vision] Detected motion: {motion} ({confidence:.2f})",
             "type": "info"
         })
+
+    async def on_attention_changed(self, data: dict):
+        state_str = data.get("attention_state")
+        try:
+            new_state = BehavioralState[state_str]
+            self.behavioral_state = new_state
+            logger.debug(f"Behavioral state updated to: {self.behavioral_state.name}")
+        except KeyError:
+            logger.warning(f"Unknown attention state: {state_str}")
+

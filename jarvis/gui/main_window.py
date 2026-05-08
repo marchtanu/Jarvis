@@ -16,13 +16,15 @@ from jarvis.gui.components.response_panel import ResponsePanel
 from jarvis.gui.components.history_panel import HistoryPanel
 from jarvis.gui.components.debug_panel import DebugPanel
 from jarvis.gui.components.vision_panel import VisionPanel
+from jarvis.gui.components.active_commands_panel import ActiveCommandsPanel
 
 
 class JarvisMainWindow(QMainWindow):
-    def __init__(self, fsm, mic=None):
+    def __init__(self, fsm, mic=None, vision_worker=None):
         super().__init__()
         self._fsm = fsm
         self._mic = mic
+        self._vision_worker = vision_worker
         self._snap_count = 0
 
         self.setWindowTitle("Jarvis")
@@ -235,6 +237,11 @@ class JarvisMainWindow(QMainWindow):
         self._vision_panel = VisionPanel()
         self._vision_panel.hide()
         layout.addWidget(self._vision_panel)
+        
+        if self._vision_worker:
+            self._vision_worker.frame_ready.connect(self._vision_panel.update_frame)
+            self._vision_worker.vision_data_ready.connect(self._vision_panel.update_data)
+            self._vision_panel.calib_btn.clicked.connect(self._vision_worker.calibrate)
 
         # Transcript + Response split
         split = QWidget()
@@ -306,6 +313,12 @@ class JarvisMainWindow(QMainWindow):
 
         self._history = HistoryPanel()
         layout.addWidget(self._history, 1)
+
+        layout.addWidget(self._make_divider())
+        
+        self._active_commands = ActiveCommandsPanel()
+        layout.addWidget(self._active_commands)
+        
         return frame
 
     # ── Event Wiring ──────────────────────────────────────────────────────────
@@ -318,6 +331,9 @@ class JarvisMainWindow(QMainWindow):
         event_bus.subscribe("SNAP_DETECTED",    self._on_snap)
         event_bus.subscribe("HOME_ACTIVATED",   self._on_home_activated)
         event_bus.subscribe("TOGGLE_VISION",    self._on_toggle_vision)
+        event_bus.subscribe("SET_VISION_STATE", self._on_set_vision_state)
+        event_bus.subscribe("SET_EYE_STATE",    self._on_set_eye_state)
+        event_bus.subscribe("SET_HAND_STATE",   self._on_set_hand_state)
         event_bus.subscribe("APP_EXIT",         self._on_app_exit)
 
     async def _on_state_changed(self, data: dict):
@@ -348,10 +364,33 @@ class JarvisMainWindow(QMainWindow):
     async def _on_toggle_vision(self, data: dict):
         if self._vision_panel.isHidden():
             self._vision_panel.show()
-            self._vision_panel.start()
+            if self._vision_worker:
+                self._vision_worker.start()
         else:
             self._vision_panel.hide()
-            self._vision_panel.stop()
+
+    async def _on_set_vision_state(self, data: dict):
+        state = data.get("state", True)
+        if state and self._vision_panel.isHidden():
+            self._vision_panel.show()
+            if self._vision_worker:
+                self._vision_worker.start()
+        elif not state and not self._vision_panel.isHidden():
+            self._vision_panel.hide()
+
+    async def _on_set_eye_state(self, data: dict):
+        state = data.get("state", True)
+        if self._vision_worker:
+            self._vision_worker.enable_eye_tracking = state
+            status = "enabled" if state else "disabled"
+            await event_bus.publish("JARVIS_RESPONSE", {"text": f"Eye tracking {status}.", "type": "info"})
+            
+    async def _on_set_hand_state(self, data: dict):
+        state = data.get("state", True)
+        if self._vision_worker:
+            self._vision_worker.enable_hand_tracking = state
+            status = "enabled" if state else "disabled"
+            await event_bus.publish("JARVIS_RESPONSE", {"text": f"Hand tracking {status}.", "type": "info"})
 
     async def _on_app_exit(self, data: dict):
         self.close()

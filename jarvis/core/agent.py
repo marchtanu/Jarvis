@@ -142,9 +142,17 @@ class JarvisAgent:
             return "(No identity profile found.)"
 
     async def execute(self, user_text: str) -> str:
-        """Route a transcribed voice command through the LLM or local fallback."""
+        """Route a transcribed voice command. Checks local skills first to minimize LLM usage."""
+        
+        # 1. Try local routing first to minimize AI costs/latency
+        local_response = await self._local_route(user_text)
+        if local_response:
+            logger.info(f"Local skill matched for: '{user_text}'")
+            return local_response
+
+        # 2. Fall back to LLM if no local match
         if not self.client:
-            return await self._fallback_execute(user_text)
+            return "No local skill matched and AI core is unconfigured."
         
         try:
             self.conversation_history.append({"role": "user", "parts": [{"text": user_text}]})
@@ -166,7 +174,7 @@ class JarvisAgent:
                     if resp.status != 200:
                         error_text = await resp.text()
                         logger.error(f"Gemini API error ({resp.status}): {error_text}")
-                        return await self._fallback_execute(user_text)
+                        return "Neural core error. Local fallback failed."
                     
                     data = await resp.json()
 
@@ -215,11 +223,41 @@ class JarvisAgent:
 
         except Exception as e:
             logger.error(f"Gemini execution error: {e}")
-            return await self._fallback_execute(user_text)
+            return "Error in neural core. Please check logs."
 
-    async def _fallback_execute(self, user_text: str) -> str:
-        """Local keyword dispatch when AI is unavailable."""
+    async def _local_route(self, user_text: str):
+        """Local keyword dispatch to bypass LLM for common commands."""
         text = user_text.lower()
+        
+        async def vision_on():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("SET_VISION_STATE", {"state": True})
+            return "Camera activated."
+            
+        async def vision_off():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("SET_VISION_STATE", {"state": False})
+            return "Camera deactivated."
+            
+        async def eye_on():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("SET_EYE_STATE", {"state": True})
+            return "Eye tracking activated."
+            
+        async def eye_off():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("SET_EYE_STATE", {"state": False})
+            return "Eye tracking deactivated."
+            
+        async def hand_on():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("SET_HAND_STATE", {"state": True})
+            return "Hand tracking activated."
+            
+        async def hand_off():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("SET_HAND_STATE", {"state": False})
+            return "Hand tracking deactivated."
 
         mapping = [
             (["volume up"],               volume_up),
@@ -230,22 +268,23 @@ class JarvisAgent:
             (["open browser", "browser"], open_browser),
             (["sleep", "goodbye"],        sleep_mode),
             (["help", "commands"],        get_help),
+            (["vision up", "vison up", "camera up", "start camera", "turn on camera", "vision on", "activate vision", "open vision", "vision panel", "show vision", "open camera"], vision_on),
+            (["vision off", "vison off", "camera off", "stop camera", "turn off camera", "close vision", "deactivate vision", "hide vision"], vision_off),
+            (["eyes up", "eye up", "eyes on", "eye on", "track eye", "track eyes", "activate eye", "start eye", "enable eye"], eye_on),
+            (["eyes off", "eye off", "eyes down", "eye down", "stop eye", "deactivate eye", "disable eye"], eye_off),
+            (["hands up", "hand up", "hands on", "hand on", "track hand", "track hands", "activate hand", "start hand", "enable hand"], hand_on),
+            (["hands down", "hand down", "hands off", "hand off", "stop hand", "deactivate hand", "disable hand"], hand_off),
         ]
 
         for keywords, func in mapping:
             if any(kw in text for kw in keywords):
-                result = await func()
-                return f"{result} [Fallback mode — add GOOGLE_API_KEY to .env to enable AI]"
+                return await func()
 
         if "search" in text or "google" in text:
             for kw in ("search for", "search", "google"):
                 if kw in text:
                     query = text.split(kw, 1)[-1].strip()
                     if query:
-                        result = await search_web(query)
-                        return f"{result} [Fallback mode]"
+                        return await search_web(query)
 
-        return (
-            "Running in fallback mode — API unavailable. "
-            "Check your GOOGLE_API_KEY or connection."
-        )
+        return None

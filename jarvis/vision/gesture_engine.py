@@ -32,16 +32,22 @@ class GestureEngine:
         pinky_tip = landmarks[20]
         pinky_pip = landmarks[18]
 
-        # Determine if fingers are extended
+        # Determine if fingers are extended (pointing UP relative to camera)
         # For a hand pointing upwards, y is smaller at the top of the image.
         index_up = index_tip['y'] < index_pip['y']
         middle_up = middle_tip['y'] < middle_pip['y']
         ring_up = ring_tip['y'] < ring_pip['y']
         pinky_up = pinky_tip['y'] < pinky_pip['y']
+        
+        # Determine if fingers are extended (pointing DOWN relative to camera)
+        index_down = index_tip['y'] > index_pip['y']
+        middle_down = middle_tip['y'] > middle_pip['y']
+        ring_down = ring_tip['y'] > ring_pip['y']
+        pinky_down = pinky_tip['y'] > pinky_pip['y']
 
-        # Thumb logic: depends on handedness. For simplicity, check if it's further from center than IP.
-        # A rough heuristic:
+        # Thumb logic
         thumb_up = thumb_tip['y'] < thumb_ip['y']
+        thumb_down = thumb_tip['y'] > thumb_ip['y']
         thumb_out = abs(thumb_tip['x'] - index_pip['x']) > abs(thumb_ip['x'] - index_pip['x'])
 
         # Classify Gesture
@@ -52,6 +58,7 @@ class GestureEngine:
             gesture = "open_palm"
             confidence = 0.9
         elif not index_up and not middle_up and not ring_up and not pinky_up:
+            # Fingers are curled in (not pointing up). This covers both true fists and relaxed curled fingers.
             if thumb_up and not thumb_out:
                 gesture = "thumbs_up"
                 confidence = 0.8
@@ -59,8 +66,20 @@ class GestureEngine:
                 gesture = "fist"
                 confidence = 0.85
         elif index_up and middle_up and not ring_up and not pinky_up:
-            gesture = "peace_sign"
-            confidence = 0.85
+            if thumb_out or thumb_up:
+                gesture = "three_fingers_up"
+                confidence = 0.85
+            else:
+                gesture = "peace_sign"
+                confidence = 0.85
+        elif index_down and middle_down and not ring_down and not pinky_down:
+            if thumb_out or thumb_down:
+                gesture = "three_fingers_down"
+                confidence = 0.85
+        elif index_up and not middle_up and not ring_up and not pinky_up:
+            if thumb_out or thumb_up:
+                gesture = "thumb_index_up"
+                confidence = 0.85
 
         # Apply cooldown
         current_time = time.time()

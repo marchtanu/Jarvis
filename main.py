@@ -14,6 +14,7 @@ from jarvis.audio.speech_recognition import SpeechRecognizer
 from jarvis.core.state_machine import JarvisStateMachine
 from jarvis.core.agent import JarvisAgent
 from jarvis.gui.main_window import JarvisMainWindow
+from jarvis.vision.worker import VisionWorker
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -52,9 +53,10 @@ async def main():
 
     agent = JarvisAgent()
     fsm = JarvisStateMachine(speech_recognizer, agent)
+    vision_worker = VisionWorker()
 
     # ── Build GUI ─────────────────────────────────────────────────────────
-    window = JarvisMainWindow(fsm, mic)
+    window = JarvisMainWindow(fsm, mic, vision_worker)
     window.hide()  # GUI activates on "daddy home" command
 
     # ── Start FSM ─────────────────────────────────────────────────────────
@@ -80,6 +82,7 @@ async def main():
     finally:
         snap_detector.stop()
         mic.stop()
+        vision_worker.stop()
         logger.info("Jarvis shut down.")
 
 

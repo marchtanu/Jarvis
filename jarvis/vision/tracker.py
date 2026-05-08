@@ -6,7 +6,7 @@ class HandTracker:
     """
     Wrapper around MediaPipe Hands for extracting landmarks.
     """
-    def __init__(self, max_hands=1, detection_con=0.7, tracking_con=0.5):
+    def __init__(self, max_hands=2, detection_con=0.7, tracking_con=0.5):
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
