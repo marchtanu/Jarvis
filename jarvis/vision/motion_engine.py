@@ -83,15 +83,7 @@ class MotionEngine:
         if motion != "none":
             self._last_motion_time = current_time
             self._history.clear() # Clear history to prevent multiple triggers
-            self._publish_motion(motion, confidence)
+            # NOTE: Do NOT publish MOTION_DETECTED here — VisionWorker._publish_events
+            # handles all event publishing. Publishing here caused duplicate events.
 
         return motion, confidence
-
-    def _publish_motion(self, motion, confidence):
-        from jarvis.core.event_bus import event_bus
-        import asyncio
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(event_bus.publish("MOTION_DETECTED", {"motion": motion, "confidence": confidence}))
-        except RuntimeError:
-            pass

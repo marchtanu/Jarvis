@@ -142,7 +142,8 @@ class GestureEngine:
             else:
                 self._last_gesture = gesture
                 self._last_gesture_time = current_time
-                self._publish_gesture(gesture, confidence)
+                # NOTE: Do NOT publish GESTURE_DETECTED here — VisionWorker._publish_events
+                # handles all event publishing. Publishing here caused duplicate events.
 
         return gesture, confidence
 
@@ -184,15 +185,3 @@ class GestureEngine:
             return "shake_down"
 
         return None
-
-    def _publish_gesture(self, gesture, confidence):
-        from jarvis.core.event_bus import event_bus
-        import asyncio
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(event_bus.publish("GESTURE_DETECTED", {
-                "gesture": gesture,
-                "confidence": confidence
-            }))
-        except RuntimeError:
-            pass

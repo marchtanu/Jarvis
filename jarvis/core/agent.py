@@ -225,6 +225,56 @@ class JarvisAgent:
             logger.error(f"Gemini execution error: {e}")
             return "Error in neural core. Please check logs."
 
+    def is_valid_command(self, user_text: str) -> bool:
+        """
+        Check if the text contains any local skill keywords or wake words.
+        Used by the speech fallback system to decide when to try Google Cloud.
+        """
+        if not user_text:
+            return False
+            
+        text = user_text.lower()
+        
+        # Check against all keywords in local mapping
+        # We extract them from the mapping structure for consistency
+        keywords_to_check = [
+            "volume up", "volume down", "mute", "time", "what time",
+            "status", "cpu", "ram", "open browser", "browser",
+            "sleep", "goodbye", "goodnight", "help", "commands",
+            "vision up", "vison up", "camera up", "start camera", "turn on camera",
+            "vision on", "activate vision", "open vision", "vision panel",
+            "show vision", "open camera", "camera open", "camera mode",
+            "vision off", "vison off", "camera off", "stop camera", "turn off camera",
+            "close vision", "deactivate vision", "hide vision", "close camera",
+            "eyes up", "eye up", "eyes on", "eye on", "track eye", "track eyes",
+            "activate eye", "start eye", "enable eye",
+            "eyes off", "eye off", "eyes down", "eye down",
+            "stop eye", "deactivate eye", "disable eye",
+            "hands up", "hand up", "hands on", "hand on", "track hand", "track hands",
+            "activate hand", "start hand", "enable hand",
+            "hands down", "hand down", "hands off", "hand off",
+            "stop hand", "deactivate hand", "disable hand",
+            "full window", "full screen", "maximize window", "maximize",
+            "minimize window", "minimize screen", "minimize",
+            "control on", "control mode", "start control",
+            "enable control", "cursor control", "cursor mode",
+            "control off", "stop control", "disable control",
+            "exit control", "exit control mode",
+            "two hands", "multi hand", "double hands", "activate two hand",
+            "one hand", "single hand", "one hand track", "default hand",
+            "search", "google"
+        ]
+        
+        if any(kw in text for kw in keywords_to_check):
+            return True
+            
+        # Check core config phrases
+        from jarvis.core.config import config
+        if config.WAKE_PHRASE in text or config.EXIT_PHRASE in text or config.SHUTDOWN_PHRASE in text:
+            return True
+            
+        return False
+
     async def _local_route(self, user_text: str):
         """Local keyword dispatch to bypass LLM for common commands."""
         text = user_text.lower()
@@ -279,6 +329,16 @@ class JarvisAgent:
             await event_bus.publish("EXIT_SUB_MODE", {})
             return "Exiting control mode."
 
+        async def multi_hand_on():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("SET_MULTI_HAND", {"state": True})
+            return "Two-hand tracking activated."
+
+        async def multi_hand_off():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("SET_MULTI_HAND", {"state": False})
+            return "Single-hand tracking activated."
+
         mapping = [
             (["volume up"],               volume_up),
             (["volume down"],             volume_down),
@@ -307,6 +367,8 @@ class JarvisAgent:
               "enable control", "cursor control", "cursor mode"], control_on),
             (["control off", "stop control", "disable control",
               "exit control", "exit control mode"], control_off),
+            (["two hands", "multi hand", "double hands", "activate two hand"], multi_hand_on),
+            (["one hand", "single hand", "one hand track", "default hand"], multi_hand_off),
         ]
 
         for keywords, func in mapping:

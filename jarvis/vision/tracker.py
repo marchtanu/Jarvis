@@ -6,16 +6,26 @@ class HandTracker:
     """
     Wrapper around MediaPipe Hands for extracting landmarks.
     """
-    def __init__(self, max_hands=2, detection_con=0.7, tracking_con=0.5):
+    def __init__(self, max_hands=1, detection_con=0.7, tracking_con=0.5):
         self.mp_hands = mp.solutions.hands
+        self.detection_con = detection_con
+        self.tracking_con = tracking_con
+        self._setup_hands(max_hands)
+        self.mp_draw = mp.solutions.drawing_utils
+        self.mp_drawing_styles = mp.solutions.drawing_styles
+
+    def _setup_hands(self, max_hands):
+        self.max_hands = max_hands
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=max_hands,
-            min_detection_confidence=detection_con,
-            min_tracking_confidence=tracking_con
+            min_detection_confidence=self.detection_con,
+            min_tracking_confidence=self.tracking_con
         )
-        self.mp_draw = mp.solutions.drawing_utils
-        self.mp_drawing_styles = mp.solutions.drawing_styles
+
+    def set_max_hands(self, max_hands):
+        if self.max_hands != max_hands:
+            self._setup_hands(max_hands)
 
     def process_frame(self, frame: np.ndarray):
         """

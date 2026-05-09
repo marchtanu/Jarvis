@@ -72,6 +72,7 @@ class VisionWorker(QObject):
         event_bus.subscribe("SET_VISION_MODE",   self._on_set_vision_mode)
         event_bus.subscribe("SET_EYE_STATE",     self._on_set_eye_state)
         event_bus.subscribe("SET_HAND_STATE",    self._on_set_hand_state)
+        event_bus.subscribe("SET_MULTI_HAND",    self._on_set_multi_hand)
 
     # ── Event Handlers ────────────────────────────────────────────────────────
 
@@ -88,6 +89,11 @@ class VisionWorker(QObject):
     def _on_set_hand_state(self, data: dict):
         self.enable_hand_tracking = data.get("state", True)
         logger.info(f"Hand tracking: {self.enable_hand_tracking}")
+
+    def _on_set_multi_hand(self, data: dict):
+        state = data.get("state", False) # False = single, True = dual
+        self.hand_tracker.set_max_hands(2 if state else 1)
+        logger.info(f"Multi-hand tracking: {state}")
 
     def _on_set_vision_mode(self, data: dict):
         mode = data.get("mode", self.MODE_NONE)
@@ -139,10 +145,6 @@ class VisionWorker(QObject):
             except RuntimeError:
                 pass
             self.camera.stop()
-            try:
-                self.eye_tracker.close()
-            except Exception:
-                pass
             self.running = False
             logger.info("Vision Worker stopped.")
 
@@ -347,9 +349,20 @@ class VisionWorker(QObject):
                     asyncio.create_task(event_bus.publish("CURSOR_HOLD_END", {}))
                     logger.info("Drag released.")
                 elif duration < 0.5:
-                    pyautogui.click()
-                    asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "🖱 Click"}))
-                    logger.info("Click.")
+                    # Check for double click gesture
+                    if not hasattr(self, '_last_click_time'):
+                        self._last_click_time = 0
+                    
+                    if current_time - self._last_click_time < 0.4: # Double click threshold
+                        pyautogui.doubleClick()
+                        asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "🖱 Double Click"}))
+                        logger.info("Double Click (Gesture).")
+                        self._last_click_time = 0 # Reset
+                    else:
+                        pyautogui.click()
+                        asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "🖱 Click"}))
+                        logger.info("Click (Gesture).")
+                        self._last_click_time = current_time
                 
                 self._hold_start = None
                 self._holding = False
@@ -372,6 +385,12 @@ class VisionWorker(QObject):
 
         if blink_data["blink"]:
             asyncio.create_task(event_bus.publish("BLINK_DETECTED", blink_data))
+            # Blink twice to click in control mode
+            if blink_data["type"] == "double" and self._vision_mode == self.MODE_CONTROL:
+                import pyautogui
+                pyautogui.click()
+                asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "👁 Blink Click"}))
+                logger.info("Click (Blink).")
 
         if gaze_data["direction"] != self._last_gaze:
             asyncio.create_task(event_bus.publish("GAZE_CHANGED", gaze_data))

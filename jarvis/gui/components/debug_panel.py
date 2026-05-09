@@ -5,6 +5,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from jarvis.gui.theme import COLORS
+from jarvis.core.event_bus import event_bus
+from jarvis.core.state_machine import State
 
 
 class DebugPanel(QWidget):
@@ -75,35 +77,103 @@ class DebugPanel(QWidget):
         div.setStyleSheet(f"background: {COLORS['border_dark']}; border: none;")
         layout.addWidget(div)
 
-        # Center: action buttons
+        # Center: action buttons -> Essential Buttons
         btn_area = QWidget()
         btn_area.setStyleSheet("background: transparent; border: none;")
         btn_layout_outer = QVBoxLayout(btn_area)
         btn_layout_outer.setContentsMargins(0, 0, 0, 0)
-        btn_layout_outer.setSpacing(6)
+        btn_layout_outer.setSpacing(10)
 
-        btn_label = QLabel("Simulate")
-        btn_label.setStyleSheet(
-            f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; letter-spacing: 0.3px;"
-        )
-        btn_layout_outer.addWidget(btn_label)
+        # 1. Mode Row
+        mode_container = QWidget()
+        mode_layout = QHBoxLayout(mode_container)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.setSpacing(6)
+        
+        mode_lbl = QLabel("Mode")
+        mode_lbl.setFixedWidth(50)
+        mode_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        mode_layout.addWidget(mode_lbl)
 
-        btn_row = QWidget()
-        btn_row.setStyleSheet("background: transparent; border: none;")
-        btn_row_layout = QHBoxLayout(btn_row)
-        btn_row_layout.setContentsMargins(0, 0, 0, 0)
-        btn_row_layout.setSpacing(8)
+        self._mode_btns = {}
+        for text, state in [("Voice", State.VOICE_MODE), ("Vision", State.CAMERA_MODE), 
+                            ("Control", State.CONTROL_MODE), ("Sleep", State.SLEEP)]:
+            btn = QPushButton(text)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda checked, s=state: self._on_mode_btn_clicked(s))
+            mode_layout.addWidget(btn)
+            self._mode_btns[state] = btn
+        
+        btn_layout_outer.addWidget(mode_container)
 
-        self._add_btn(btn_row_layout, "Snap",       self._sim_snap,         primary=False)
-        self._add_btn(btn_row_layout, "2× Snap",    self._sim_double_snap,  primary=False)
-        self._add_btn(btn_row_layout, "Wake word",  self._sim_wake,         primary=False)
-        self._add_btn(btn_row_layout, "Daddy home", self._sim_cmd_daddy,    primary=True)
-        self._add_btn(btn_row_layout, "Vision",     self._sim_toggle_vision,primary=False)
-        self._add_btn(btn_row_layout, "Shutdown",   self._sim_shutdown,     primary=False)
-        btn_row_layout.addStretch()
-        btn_layout_outer.addWidget(btn_row)
+        # 2. Plus Features Row
+        feat_container = QWidget()
+        feat_layout = QHBoxLayout(feat_container)
+        feat_layout.setContentsMargins(0, 0, 0, 0)
+        feat_layout.setSpacing(6)
+
+        feat_lbl = QLabel("Feature")
+        feat_lbl.setFixedWidth(50)
+        feat_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        feat_layout.addWidget(feat_lbl)
+
+        self._btn_eyes = self._add_toggle_btn(feat_layout, "Eyes", self._toggle_eyes)
+        self._btn_hands = self._add_toggle_btn(feat_layout, "Hand", self._toggle_hands, initial=True)
+        self._btn_multi = self._add_toggle_btn(feat_layout, "Multi", self._toggle_multi)
+        feat_layout.addStretch()
+
+        btn_layout_outer.addWidget(feat_container)
+
+        # 3. Skills Row (Optional fallback)
+        skill_container = QWidget()
+        skill_layout = QHBoxLayout(skill_container)
+        skill_layout.setContentsMargins(0, 0, 0, 0)
+        skill_layout.setSpacing(6)
+
+        skill_lbl = QLabel("Skill")
+        skill_lbl.setFixedWidth(50)
+        skill_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        skill_layout.addWidget(skill_lbl)
+
+        self.func_select = QComboBox()
+        self.func_select.setStyleSheet(self._combo_style())
+        if hasattr(self._fsm.agent, 'available_tools'):
+            for name in sorted(self._fsm.agent.available_tools.keys()):
+                self.func_select.addItem(name.replace('_', ' ').title(), name)
+        
+        self._exec_btn = QPushButton("Run")
+        self._exec_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['border_dark']};
+                border: 1px solid {COLORS['border_dark']};
+                border-radius: 4px;
+                color: {COLORS['text_on_dark']};
+                padding: 2px 12px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{ background-color: {COLORS['accent']}; color: white; }}
+        """)
+        self._exec_btn.clicked.connect(self._run_selected_func)
+        
+        skill_layout.addWidget(self.func_select, 1)
+        skill_layout.addWidget(self._exec_btn)
+        btn_layout_outer.addWidget(skill_container)
+
+        # Row 4: Utility buttons
+        util_row = QHBoxLayout()
+        self._add_btn(util_row, "Shutdown",   self._sim_shutdown,      primary=False)
+        util_row.addStretch()
+        btn_layout_outer.addLayout(util_row)
+        
         btn_layout_outer.addStretch()
         layout.addWidget(btn_area, 1)
+
+        # Subscribe to mode changes to keep UI in sync
+        event_bus.subscribe("MODE_CHANGED", self._on_mode_changed_event)
+        
+        # Initial state sync
+        self._update_ui_states()
 
         # Divider
         div2 = QWidget()
@@ -142,6 +212,7 @@ class DebugPanel(QWidget):
 
     def _add_btn(self, layout, text: str, callback, primary: bool = False):
         btn = QPushButton(text)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
         if primary:
             btn.setStyleSheet(f"""
                 QPushButton {{
@@ -186,34 +257,86 @@ class DebugPanel(QWidget):
     def _run_async(self, coro):
         asyncio.create_task(coro)
 
-    def _sim_snap(self):
-        self._log_event("Simulated: SNAP")
-        self._run_async(self._fsm.simulate_snap())
-
-    def _sim_double_snap(self):
-        self._log_event("Simulated: DOUBLE SNAP")
-        async def _double():
-            await self._fsm.simulate_snap()
-            import asyncio as _a; await _a.sleep(0.4)
-            await self._fsm.simulate_snap()
-        self._run_async(_double())
-
-    def _sim_wake(self):
-        self._log_event("Simulated: WAKE PHRASE")
-        self._run_async(self._fsm.simulate_wake_phrase())
-
-    def _sim_cmd_daddy(self):
-        self._log_event('Simulated: "daddy home"')
-        self._run_async(self._fsm._process_command("daddy home"))
-
     def _sim_toggle_vision(self):
         self._log_event("Simulated: TOGGLE VISION")
-        from jarvis.core.event_bus import event_bus
         self._run_async(event_bus.publish("TOGGLE_VISION", {}))
 
     def _sim_shutdown(self):
         self._log_event("Simulated: SHUTDOWN")
         self._run_async(self._fsm.simulate_shutdown())
+
+    def _on_mode_btn_clicked(self, state):
+        if self._fsm.state != state:
+            self._log_event(f"Forcing State -> {state.name}")
+            self._fsm.state = state
+            self._run_async(self._fsm._publish_state(f"Debug: Switch to {state.name}"))
+        self._update_ui_states()
+
+    def _add_toggle_btn(self, layout, text, callback, initial=False):
+        btn = QPushButton(text)
+        btn.setCheckable(True)
+        btn.setChecked(initial)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.clicked.connect(callback)
+        layout.addWidget(btn)
+        return btn
+
+    def _toggle_feature(self, event_name, label, checked):
+        self._log_event(f"{label}: {'ON' if checked else 'OFF'}")
+        self._run_async(event_bus.publish(event_name, {"state": checked}))
+        self._update_ui_states()
+
+    def _toggle_eyes(self, checked): self._toggle_feature("SET_EYE_STATE", "Eyes", checked)
+    def _toggle_hands(self, checked): self._toggle_feature("SET_HAND_STATE", "Hand", checked)
+    def _toggle_multi(self, checked): self._toggle_feature("SET_MULTI_HAND", "Multi-Hand", checked)
+
+    def _run_selected_func(self):
+        func_name = self.func_select.currentData()
+        if func_name:
+            self._log_event(f"Manual Skill Exec: {func_name}")
+            func = self._fsm.agent.available_tools.get(func_name)
+            if func:
+                self._run_async(func())
+
+    async def _on_mode_changed_event(self, data: dict):
+        self._update_ui_states()
+
+    def _update_ui_states(self):
+        """Sync button styles with system state."""
+        # Modes
+        current_state = self._fsm.state
+        for state, btn in self._mode_btns.items():
+            btn.setChecked(state == current_state)
+            btn.setStyleSheet(self._get_btn_style(state == current_state))
+
+        # Features
+        for btn in [self._btn_eyes, self._btn_hands, self._btn_multi]:
+            btn.setStyleSheet(self._get_btn_style(btn.isChecked()))
+
+    def _get_btn_style(self, active: bool):
+        if active:
+            return f"""
+                QPushButton {{
+                    background-color: {COLORS['accent']};
+                    border: 1px solid {COLORS['accent']};
+                    border-radius: 4px;
+                    color: white;
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }}
+            """
+        return f"""
+            QPushButton {{
+                background-color: {COLORS['border_dark']};
+                border: 1px solid {COLORS['border_dark']};
+                border-radius: 4px;
+                color: {COLORS['text_on_dark_muted']};
+                padding: 4px 10px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{ background-color: #2E2B27; color: {COLORS['text_on_dark']}; }}
+        """
 
     def _toggle_mic(self, enabled: bool):
         self._mic_enabled = enabled
@@ -245,7 +368,7 @@ class DebugPanel(QWidget):
             for i, d in enumerate(devices):
                 if d['max_input_channels'] > 0:
                     self.mic_select.addItem(f"Mic {i}: {d['name'][:20]}...", i)
-        except Exception as e:
+        except Exception:
             self.mic_select.addItem("No Mics Found", -1)
 
         # Cameras
@@ -272,12 +395,7 @@ class DebugPanel(QWidget):
             self._mic_instance.stop()
             self._mic_instance.start(device_index=mic_idx)
 
-    def set_mic_instance(self, mic):
-        self._mic_instance = mic
-
-    def log(self, msg: str):
-        self._log_event(msg)
-
+    def set_mic_instance(self, mic): self._mic_instance = mic
+    def log(self, msg: str): self._log_event(msg)
     @property
-    def mic_enabled(self) -> bool:
-        return self._mic_enabled
+    def mic_enabled(self) -> bool: return self._mic_enabled

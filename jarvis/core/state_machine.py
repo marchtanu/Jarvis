@@ -62,6 +62,7 @@ class JarvisStateMachine:
         self._voice_task = None
         self._active_tasks = set()
         self.last_play_pause_time = 0.0
+        self.last_track_time = 0.0
         self.last_camera_open_palm_time = 0.0
 
         # Volume / media control state
@@ -90,7 +91,8 @@ class JarvisStateMachine:
         event_bus.subscribe("TEMP_VOICE_START", self._on_temp_voice_start)
         event_bus.subscribe("TEMP_VOICE_END", self._on_temp_voice_end)
 
-        asyncio.create_task(self._volume_control_loop())
+        await self._publish_state("Jarvis initialized. Waiting for activation.")
+        logger.info("State Machine started in STANDBY.")
 
     async def stop(self):
         """Cancel all pending tasks for clean shutdown."""
@@ -100,9 +102,6 @@ class JarvisStateMachine:
             if not task.done():
                 task.cancel()
         logger.info("State Machine cleanup complete.")
-
-        await self._publish_state("Jarvis initialized. Waiting for activation.")
-        logger.info("State Machine started in STANDBY.")
 
     # ── State Publishing ──────────────────────────────────────────────────────
 
@@ -138,10 +137,13 @@ class JarvisStateMachine:
     async def _snap_timeout(self):
         await asyncio.sleep(config.SNAP_WINDOW_TIMEOUT)
         if self.state == State.SNAP_DETECTED:
-            self.state = State.STANDBY
+            # Return to whichever state we came from (STANDBY or SLEEP)
+            fallback = getattr(self, 'pre_snap_state', State.STANDBY)
+            self.state = fallback
             if self.snap_detector:
                 self.snap_detector.start() # Ensure detector is running
-            await self._publish_state("Window expired. Back to standby.")
+            label = "Sleeping..." if fallback == State.SLEEP else "Window expired. Back to standby."
+            await self._publish_state(label)
 
     async def _enter_waiting_wake_word(self):
         self.state = State.WAITING_WAKE_WORD
@@ -154,6 +156,8 @@ class JarvisStateMachine:
         text = await self.speech_recognizer.listen_for_command(
             timeout=config.WAKE_WORD_TIMEOUT,
             phrase_time_limit=config.WAKE_WORD_TIMEOUT,
+            grammar=[config.WAKE_PHRASE, config.EXIT_PHRASE],
+            validator=self.agent.is_valid_command
         )
 
         if text:
@@ -208,6 +212,7 @@ class JarvisStateMachine:
                 text = await self.speech_recognizer.listen_for_command(
                     timeout=config.COMMAND_TIMEOUT,
                     phrase_time_limit=10.0,
+                    validator=self.agent.is_valid_command
                 )
 
                 if not text:
@@ -301,6 +306,7 @@ class JarvisStateMachine:
         text = await self.speech_recognizer.listen_for_command(
             timeout=5.0,
             phrase_time_limit=5.0,
+            validator=self.agent.is_valid_command
         )
         if text and self.state == State.CAMERA_MODE:
             await event_bus.publish("SPEECH_RECOGNIZED", {"text": text})
@@ -346,6 +352,8 @@ class JarvisStateMachine:
         elif self.state == State.CAMERA_MODE:
             logger.info("Exiting Camera Mode -> Returning to Voice Mode")
             self.state = State.VOICE_MODE
+            if self.snap_detector:
+                self.snap_detector.stop()  # Keep snaps silent during voice
             await self._publish_state("Voice Mode — returned from sub-mode.")
             await event_bus.publish("SET_VISION_MODE", {"mode": "none"})
             await event_bus.publish("JARVIS_RESPONSE", {
@@ -456,7 +464,7 @@ class JarvisStateMachine:
             palm_age = current_time - self.last_camera_open_palm_time
             if 0.1 < palm_age <= 1.5:
                 pause_cooldown = current_time - self.last_play_pause_time
-                if pause_cooldown > 2.0:
+                if pause_cooldown > 1.5:
                     self.last_play_pause_time = current_time
                     pyautogui.press('playpause')
                     asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "⏯ Play / Pause"}))
@@ -467,17 +475,23 @@ class JarvisStateMachine:
 
         # Track skipping: 3 fingers pointing left/right
         elif gesture == "three_fingers_right":
-            pyautogui.press('nexttrack')
-            asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "⏭⏭ Next Track"}))
-            asyncio.create_task(event_bus.publish("JARVIS_RESPONSE", {
-                "text": "Next track.", "type": "info"
-            }))
+            track_cooldown = current_time - self.last_track_time
+            if track_cooldown > 1.5:
+                self.last_track_time = current_time
+                pyautogui.press('nexttrack')
+                asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "⏭⏭ Next Track"}))
+                asyncio.create_task(event_bus.publish("JARVIS_RESPONSE", {
+                    "text": "Next track.", "type": "info"
+                }))
         elif gesture == "three_fingers_left":
-            pyautogui.press('prevtrack')
-            asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "⏮⏮ Prev Track"}))
-            asyncio.create_task(event_bus.publish("JARVIS_RESPONSE", {
-                "text": "Previous track.", "type": "info"
-            }))
+            track_cooldown = current_time - self.last_track_time
+            if track_cooldown > 1.5:
+                self.last_track_time = current_time
+                pyautogui.press('prevtrack')
+                asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "⏮⏮ Prev Track"}))
+                asyncio.create_task(event_bus.publish("JARVIS_RESPONSE", {
+                    "text": "Previous track.", "type": "info"
+                }))
 
     async def on_motion_detected(self, data: dict):
         motion = data.get("motion")
@@ -495,19 +509,9 @@ class JarvisStateMachine:
         pass
 
     # ── Volume Control Loop (Camera Mode) ────────────────────────────────────
-
-    async def _volume_control_loop(self):
-        """Continuous loop for smooth volume adjustment in CAMERA_MODE."""
-        import pyautogui
-        while True:
-            if self.state == State.CAMERA_MODE:
-                if self.current_gesture == "three_fingers_up":
-                    pyautogui.press('volumeup')
-                    asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "▲ Volume Up"}))
-                elif self.current_gesture == "three_fingers_down":
-                    pyautogui.press('volumedown')
-                    asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "▼ Volume Down"}))
-            await asyncio.sleep(0.4)  # Base tick rate for holding the gesture
+    # NOTE: Removed _volume_control_loop — volume is handled via shake_up/shake_down
+    # gestures from GestureEngine which are routed through _handle_camera_gesture.
+    # The old loop caused duplicate volume presses when holding three_fingers_up/down.
 
     # ── Cancel All ────────────────────────────────────────────────────────────
 

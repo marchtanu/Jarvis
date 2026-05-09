@@ -5,7 +5,7 @@ A Python-based personal assistant with double-snap activation and offline voice 
 ## Features
 - **Real-time Listening**: Continuous microphone monitoring.
 - **Double-Snap Trigger**: Robust energy-based detection for "armed" mode.
-- **Offline Voice Recognition**: Powered by Vosk for low-latency, private STT.
+- **Hybrid Speech Recognition**: High-speed local Vosk engine with Google Cloud fallback. See [Speech Recognition Docs](jarvis/docs/speech_recognition.md).
 - **Event-Driven Architecture**: Decoupled modules using an asynchronous event bus.
 - **FSM Management**: Clean state transitions (IDLE -> SNAP_1 -> ARMED -> LISTENING -> EXECUTING).
 

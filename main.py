@@ -76,7 +76,7 @@ async def main():
     snap_detector.start()
     
     # Connect mic to GUI for hardware switching
-    window._debug_panel.set_mic_instance(mic)
+    window.debug_panel.set_mic_instance(mic)
 
     logger.info("Jarvis is ready.")
     logger.info(f"  Wake phrase    : '{config.WAKE_PHRASE}'")
@@ -84,7 +84,7 @@ async def main():
 
     # ── Run Audio Loop ────────────────────────────────────────────────────
     try:
-        await audio_loop(mic, snap_detector, window, window._debug_panel)
+        await audio_loop(mic, snap_detector, window, window.debug_panel)
     except asyncio.CancelledError:
         pass
     except Exception as e:

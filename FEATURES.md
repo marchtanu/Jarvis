@@ -32,12 +32,11 @@ EMERGENCY (works in ALL states)
 | Input | Action |
 |---|---|
 | Snap × 2 + **"daddy home"** | → Voice Mode |
-| Snap × 2 + **"exit"** (exact) | → Shutdown |
-| `open_palm → fist` | → Exit program (global override) |
+| Snap × 2 + **"exit"** (exact) | → Shutdown (only from Sleep → Snap flow) |
 
 ### Rules
 - All other voice commands → ignored
-- All other gestures → ignored
+- All other gestures → ignored (emergency gesture not active in Standby)
 - Camera feed not active
 
 ---
@@ -55,7 +54,7 @@ EMERGENCY (works in ALL states)
 | `"vision up"` / `"open camera"` / `"camera open"` | → Activate Camera Mode |
 | `"control on"` / `"control mode"` / `"cursor mode"` | → Activate Control Mode |
 | `"goodbye jojo"` / `"goodnight"` | → Sleep Mode |
-| `"exit"` / `"terminate program"` | → Shutdown program (**Sleep Mode Only**) |
+| `"exit"` / `"terminate program"` | → Blocked in Voice Mode (must sleep first) |
 | `"help"` / `"commands"` | List all commands, modes, gestures |
 | `"volume up"` | Increase system volume |
 | `"volume down"` | Decrease system volume |
@@ -161,14 +160,14 @@ While temporarily listening, you can say:
 
 ## Global Emergency Override
 
-Works in **Sleep Mode** only to terminate.
+Works in **Sleep Mode only** to terminate.
 
-| Gesture | Action |
-|---|---|
-| `open_palm → fist` (within 1.0s) | Immediately exit the program (**Sleep Mode Only**) | 5s cooldown |
+| Gesture | Action | Cooldown |
+|---|---|---|
+| `open_palm → fist` (within 1.0s) | Immediately exit the program | 5s cooldown |
 
-- 2-second cooldown after activation
-- Bypasses all mode restrictions
+- **5-second** cooldown between triggers
+- Only active in **Sleep Mode** — prevents accidental exits during gesture control
 
 ---
 
@@ -177,31 +176,25 @@ Works in **Sleep Mode** only to terminate.
 ```
 [start]          → STANDBY
 STANDBY          → VOICE MODE     (2 snaps + "daddy home")
-STANDBY          → SHUTDOWN       (2 snaps + "exit")
-STANDBY          → SHUTDOWN       (open_palm → fist)
 VOICE MODE       → CAMERA MODE    ("open camera" / "vision up")
 VOICE MODE       → CONTROL MODE   ("control on")
 VOICE MODE       → SLEEP          ("goodbye jojo" / "goodnight")
-VOICE MODE       → SHUTDOWN       ("exit")
-CAMERA MODE      → VOICE MODE     ("camera off" while index up)
+CAMERA MODE      → VOICE MODE     (peace_sign gesture / "camera off")
 CAMERA MODE      → SLEEP          ("goodbye jojo" while index up)
-CAMERA MODE      → SHUTDOWN       (open_palm → fist)
-CONTROL MODE     → VOICE MODE     (rock_sign gesture)
-CONTROL MODE     → SLEEP          ("goodbye jojo" / "goodnight")
-CONTROL MODE     → SHUTDOWN       ("exit" or open_palm → fist)
+CONTROL MODE     → CAMERA MODE    (rock_sign gesture / "control off")
 SLEEP            → VOICE MODE     (2 snaps + "daddy home")
 SLEEP            → SHUTDOWN       (2 snaps + "exit")
-SLEEP            → SHUTDOWN       (open_palm → fist)
+SLEEP            → SHUTDOWN       (open_palm → fist, 5s cooldown)
 ```
 
 ---
 
 ## Full Gesture Reference
 
-### Global (All Modes)
+### Emergency (Sleep Mode Only)
 | Gesture | Action |
 |---|---|
-| `open_palm → fist` | Exit program |
+| `open_palm → fist` | Exit program (5s cooldown) |
 
 ### Voice Mode
 | Input Type | Trigger | Action |
@@ -234,5 +227,6 @@ SLEEP            → SHUTDOWN       (open_palm → fist)
 ## Intelligence Layer
 
 - **Local Skill Router:** Instant response for known commands (volume, time, system status, etc.) — no AI call needed
+- **Local Speech Recognition (Vosk):** Real-time, offline command processing using the `vosk-model-small-en-us-0.15` model. Significant latency reduction compared to cloud APIs.
 - **AI Brain (Gemini Flash):** Complex or unrecognized commands fall back to LLM with function-calling
 - **Event Bus:** All modules communicate via async pub/sub events — decoupled and extensible

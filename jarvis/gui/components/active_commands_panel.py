@@ -185,6 +185,8 @@ class ActiveCommandsPanel(QFrame):
                 ("Camera Mode", "Enable gesture control", "'open camera'"),
                 ("Control Mode", "Enable cursor control", "'control on'"),
                 ("Sleep Mode", "Enter standby", "'goodbye jojo' / 'goodnight'"),
+                ("Minimize", "Minimize window", "'minimize window'"),
+                ("Fullscreen", "Toggle fullscreen", "'fullscreen'"),
                 ("Help", "List all voice commands", "'help'"),
             ],
             "CAMERA_MODE": [
@@ -192,12 +194,15 @@ class ActiveCommandsPanel(QFrame):
                 ("Play / Pause", "Toggle media", "Open Palm -> Fist"),
                 ("Volume Up/Down", "Adjust volume", "3 fingers up/down (Shake to speed up)"),
                 ("Next / Prev Track", "Skip media", "3 fingers Point Left/Right"),
+                ("Exit", "Return to Voice Mode", "'vision off'"),
             ],
             "CONTROL_MODE": [
                 ("Move Cursor", "Follow hand position", "3 fingers up"),
                 ("Click", "Mouse click", "Tap Index & Middle to Thumb"),
                 ("Hold / Drag", "Mouse drag", "Hold Index & Middle to Thumb"),
-                ("Exit", "Return to Voice Mode", "Rock Sign"),
+                ("Double Click", "Fast double click", "Click gesture twice"),
+                ("Blink Click", "Eye click", "Blink twice"),
+                ("Exit", "Return to Voice Mode", "Rock Sign / 'control off'"),
             ],
         }
 
