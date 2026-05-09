@@ -17,6 +17,7 @@ from jarvis.gui.components.history_panel import HistoryPanel
 from jarvis.gui.components.debug_panel import DebugPanel
 from jarvis.gui.components.vision_panel import VisionPanel
 from jarvis.gui.components.active_commands_panel import ActiveCommandsPanel
+from jarvis.gui.components.last_command_widget import LastCommandWidget
 
 
 class JarvisMainWindow(QMainWindow):
@@ -94,6 +95,15 @@ class JarvisMainWindow(QMainWindow):
         )
         layout.addWidget(title)
         layout.addStretch()
+
+        # Last activated command indicator
+        self._last_cmd_widget = LastCommandWidget()
+        layout.addWidget(self._last_cmd_widget)
+
+        # Separator
+        sep = QLabel("│")
+        sep.setStyleSheet(f"color: {COLORS['border_dark']}; font-size: 14px; border: none; margin: 0 6px;")
+        layout.addWidget(sep)
 
         # Status badge
         self._status_badge = QLabel("● Standby")
@@ -325,6 +335,7 @@ class JarvisMainWindow(QMainWindow):
 
     def _connect_events(self):
         event_bus.subscribe("STATE_CHANGED",    self._on_state_changed)
+        event_bus.subscribe("MODE_CHANGED",     self._on_mode_changed)
         event_bus.subscribe("SPEECH_RECOGNIZED",self._on_speech_recognized)
         event_bus.subscribe("JARVIS_RESPONSE",  self._on_jarvis_response)
         event_bus.subscribe("COMMAND_EXECUTED", self._on_command_executed)
@@ -335,6 +346,7 @@ class JarvisMainWindow(QMainWindow):
         event_bus.subscribe("SET_EYE_STATE",    self._on_set_eye_state)
         event_bus.subscribe("SET_HAND_STATE",   self._on_set_hand_state)
         event_bus.subscribe("TOGGLE_FULLSCREEN", self._on_toggle_fullscreen)
+        event_bus.subscribe("MINIMIZE_WINDOW",  self._on_minimize_window)
         event_bus.subscribe("APP_EXIT",         self._on_app_exit)
 
     async def _on_state_changed(self, data: dict):
@@ -346,6 +358,18 @@ class JarvisMainWindow(QMainWindow):
         self._status_badge.setStyleSheet(f"color: {color}; font-size: 12px; border: none;")
         if state == "STANDBY":
             self.hide()
+
+    async def _on_mode_changed(self, data: dict):
+        """Show/hide vision panel automatically when entering/leaving camera or control mode."""
+        mode = data.get("mode", "")
+        if mode in ("CAMERA_MODE", "CONTROL_MODE"):
+            if self._vision_panel.isHidden():
+                self._vision_panel.show()
+                if self._vision_worker:
+                    self._vision_worker.start()
+        elif mode in ("VOICE_MODE", "STANDBY", "SLEEP"):
+            # Don't auto-hide — user may have manually opened camera; only hide on explicit off
+            pass
 
     async def _on_speech_recognized(self, data: dict):
         self._transcript.add_text(data["text"], "USER")
@@ -384,6 +408,9 @@ class JarvisMainWindow(QMainWindow):
             self.showNormal()
         else:
             self.showFullScreen()
+
+    async def _on_minimize_window(self, data: dict):
+        self.showMinimized()
 
     async def _on_set_eye_state(self, data: dict):
         state = data.get("state", True)

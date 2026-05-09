@@ -17,6 +17,7 @@ class Config:
     # Activation Phrases
     WAKE_PHRASE: str = "daddy home"
     SHUTDOWN_PHRASE: str = "goodbye jojo"
+    GOODNIGHT_PHRASE: str = "goodnight"
     EXIT_PHRASE: str = "exit"
 
     # Speech Recognition

@@ -1,6 +1,11 @@
 import asyncio
 import logging
 import sys
+import os
+
+# Set matplotlib backend to Agg to prevent hangs during mediapipe import
+os.environ['MPLBACKEND'] = 'Agg'
+
 import numpy as np
 
 import qasync
@@ -52,7 +57,7 @@ async def main():
     speech_recognizer = SpeechRecognizer()
 
     agent = JarvisAgent()
-    fsm = JarvisStateMachine(speech_recognizer, agent)
+    fsm = JarvisStateMachine(speech_recognizer, agent, snap_detector)
     vision_worker = VisionWorker()
 
     # ── Build GUI ─────────────────────────────────────────────────────────
@@ -82,7 +87,10 @@ async def main():
         await audio_loop(mic, snap_detector, window, window._debug_panel)
     except asyncio.CancelledError:
         pass
+    except Exception as e:
+        logger.exception(f"Unexpected error in main loop: {e}")
     finally:
+        await fsm.stop()
         snap_detector.stop()
         mic.stop()
         vision_worker.stop()

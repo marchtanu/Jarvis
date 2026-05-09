@@ -25,7 +25,7 @@ class StatePanel(QWidget):
         self._state_label = label
         self._message = message
         # Active states breathe faster
-        if state_name in ("COMMAND_MODE", "PROCESSING"):
+        if state_name in ("VOICE_MODE", "CAMERA_MODE", "CONTROL_MODE", "PROCESSING", "COMMAND_MODE"):
             self._pulse_speed = 0.07
         elif state_name == "SNAP_DETECTED":
             self._pulse_speed = 0.12
@@ -48,7 +48,8 @@ class StatePanel(QWidget):
         base = QColor(hex_color)
 
         # Breathing glow ring (subtle, only on active states)
-        if self._state_name in ("COMMAND_MODE", "PROCESSING", "SNAP_DETECTED", "WAITING_WAKE_WORD"):
+        if self._state_name in ("VOICE_MODE", "CAMERA_MODE", "CONTROL_MODE", "PROCESSING",
+                                 "SNAP_DETECTED", "WAITING_WAKE_WORD", "COMMAND_MODE"):
             glow_alpha = int(18 + 14 * math.sin(self._pulse))
             glow_r = 22
             glow_color = QColor(base)

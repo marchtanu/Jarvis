@@ -43,13 +43,17 @@ COLORS = {
 }
 
 STATE_COLORS = {
-    "STANDBY":          "#8E8B82",   # Soft muted
-    "SNAP_DETECTED":    "#E8A55A",   # Amber — attention
-    "WAITING_WAKE_WORD": "#CC785C",  # Coral — listening
-    "COMMAND_MODE":     "#141413",   # Ink — active
-    "PROCESSING":       "#CC785C",   # Coral — working
-    "SLEEP":            "#8E8B82",   # Soft muted
-    "SHUTDOWN":         "#C64545",   # Red
+    "STANDBY":           "#8E8B82",   # Soft muted
+    "SNAP_DETECTED":     "#E8A55A",   # Amber — attention
+    "WAITING_WAKE_WORD": "#CC785C",   # Coral — listening
+    "VOICE_MODE":        "#141413",   # Ink — active voice
+    "CAMERA_MODE":       "#5DB872",   # Green — camera/gesture
+    "CONTROL_MODE":      "#3B82F6",   # Blue — cursor control
+    "PROCESSING":        "#CC785C",   # Coral — working
+    "SLEEP":             "#8E8B82",   # Soft muted
+    "SHUTDOWN":          "#C64545",   # Red
+    # Legacy alias
+    "COMMAND_MODE":      "#141413",
 }
 
 RESPONSE_COLORS = {

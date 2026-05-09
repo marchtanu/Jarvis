@@ -231,38 +231,53 @@ class JarvisAgent:
         
         async def vision_on():
             from jarvis.core.event_bus import event_bus
-            await event_bus.publish("SET_VISION_STATE", {"state": True})
-            return "Camera activated."
-            
+            await event_bus.publish("ENTER_CAMERA_MODE", {})
+            return "Entering camera mode."
+
         async def vision_off():
             from jarvis.core.event_bus import event_bus
-            await event_bus.publish("SET_VISION_STATE", {"state": False})
-            return "Camera deactivated."
-            
+            await event_bus.publish("EXIT_SUB_MODE", {})
+            return "Exiting camera mode."
+
         async def toggle_fullscreen():
             from jarvis.core.event_bus import event_bus
             await event_bus.publish("TOGGLE_FULLSCREEN", {})
             return "Toggling full screen mode."
-            
+
+        async def minimize_window():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("MINIMIZE_WINDOW", {})
+            return "Minimizing Jarvis window."
+
         async def eye_on():
             from jarvis.core.event_bus import event_bus
             await event_bus.publish("SET_EYE_STATE", {"state": True})
             return "Eye tracking activated."
-            
+
         async def eye_off():
             from jarvis.core.event_bus import event_bus
             await event_bus.publish("SET_EYE_STATE", {"state": False})
             return "Eye tracking deactivated."
-            
+
         async def hand_on():
             from jarvis.core.event_bus import event_bus
             await event_bus.publish("SET_HAND_STATE", {"state": True})
             return "Hand tracking activated."
-            
+
         async def hand_off():
             from jarvis.core.event_bus import event_bus
             await event_bus.publish("SET_HAND_STATE", {"state": False})
             return "Hand tracking deactivated."
+
+        async def control_on():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("ENTER_CONTROL_MODE", {})
+            return "Entering control mode."
+
+        async def control_off():
+            from jarvis.core.event_bus import event_bus
+            await event_bus.publish("EXIT_SUB_MODE", {})
+            return "Exiting control mode."
 
         mapping = [
             (["volume up"],               volume_up),
@@ -271,15 +286,27 @@ class JarvisAgent:
             (["time", "what time"],       tell_time),
             (["status", "cpu", "ram"],    system_status),
             (["open browser", "browser"], open_browser),
-            (["sleep", "goodbye"],        sleep_mode),
+            (["sleep", "goodbye", "goodnight"], sleep_mode),
             (["help", "commands"],        get_help),
-            (["vision up", "vison up", "camera up", "start camera", "turn on camera", "vision on", "activate vision", "open vision", "vision panel", "show vision", "open camera"], vision_on),
-            (["vision off", "vison off", "camera off", "stop camera", "turn off camera", "close vision", "deactivate vision", "hide vision"], vision_off),
-            (["eyes up", "eye up", "eyes on", "eye on", "track eye", "track eyes", "activate eye", "start eye", "enable eye"], eye_on),
-            (["eyes off", "eye off", "eyes down", "eye down", "stop eye", "deactivate eye", "disable eye"], eye_off),
-            (["hands up", "hand up", "hands on", "hand on", "track hand", "track hands", "activate hand", "start hand", "enable hand"], hand_on),
-            (["hands down", "hand down", "hands off", "hand off", "stop hand", "deactivate hand", "disable hand"], hand_off),
+            (["vision up", "vison up", "camera up", "start camera", "turn on camera",
+              "vision on", "activate vision", "open vision", "vision panel",
+              "show vision", "open camera", "camera open", "camera mode"], vision_on),
+            (["vision off", "vison off", "camera off", "stop camera", "turn off camera",
+              "close vision", "deactivate vision", "hide vision", "close camera"], vision_off),
+            (["eyes up", "eye up", "eyes on", "eye on", "track eye", "track eyes",
+              "activate eye", "start eye", "enable eye"], eye_on),
+            (["eyes off", "eye off", "eyes down", "eye down",
+              "stop eye", "deactivate eye", "disable eye"], eye_off),
+            (["hands up", "hand up", "hands on", "hand on", "track hand", "track hands",
+              "activate hand", "start hand", "enable hand"], hand_on),
+            (["hands down", "hand down", "hands off", "hand off",
+              "stop hand", "deactivate hand", "disable hand"], hand_off),
             (["full window", "full screen", "maximize window", "maximize"], toggle_fullscreen),
+            (["minimize window", "minimize screen", "minimize"], minimize_window),
+            (["control on", "control mode", "start control",
+              "enable control", "cursor control", "cursor mode"], control_on),
+            (["control off", "stop control", "disable control",
+              "exit control", "exit control mode"], control_off),
         ]
 
         for keywords, func in mapping:
