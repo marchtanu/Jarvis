@@ -121,6 +121,9 @@ class DebugPanel(QWidget):
         self._btn_eyes = self._add_toggle_btn(feat_layout, "Eyes", self._toggle_eyes)
         self._btn_hands = self._add_toggle_btn(feat_layout, "Hand", self._toggle_hands, initial=True)
         self._btn_multi = self._add_toggle_btn(feat_layout, "Multi", self._toggle_multi)
+        
+        self._add_btn(feat_layout, "Shutdown", self._sim_shutdown, primary=False)
+        
         feat_layout.addStretch()
 
         btn_layout_outer.addWidget(feat_container)
@@ -160,12 +163,6 @@ class DebugPanel(QWidget):
         skill_layout.addWidget(self._exec_btn)
         btn_layout_outer.addWidget(skill_container)
 
-        # Row 4: Utility buttons
-        util_row = QHBoxLayout()
-        self._add_btn(util_row, "Shutdown",   self._sim_shutdown,      primary=False)
-        util_row.addStretch()
-        btn_layout_outer.addLayout(util_row)
-        
         btn_layout_outer.addStretch()
         layout.addWidget(btn_area, 1)
 
@@ -268,8 +265,19 @@ class DebugPanel(QWidget):
     def _on_mode_btn_clicked(self, state):
         if self._fsm.state != state:
             self._log_event(f"Forcing State -> {state.name}")
-            self._fsm.state = state
-            self._run_async(self._fsm._publish_state(f"Debug: Switch to {state.name}"))
+            
+            # Map states to their proper entry methods
+            if state == State.VOICE_MODE:
+                self._run_async(self._fsm._enter_voice_mode())
+            elif state == State.CAMERA_MODE:
+                self._run_async(self._fsm._on_enter_camera_mode({}))
+            elif state == State.CONTROL_MODE:
+                self._run_async(self._fsm._on_enter_control_mode({}))
+            elif state == State.SLEEP:
+                self._run_async(self._fsm._enter_sleep_mode())
+            else:
+                self._fsm.state = state
+                self._run_async(self._fsm._publish_state(f"Debug: Switch to {state.name}"))
         self._update_ui_states()
 
     def _add_toggle_btn(self, layout, text, callback, initial=False):

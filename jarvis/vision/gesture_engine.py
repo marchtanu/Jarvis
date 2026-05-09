@@ -8,6 +8,9 @@ class GestureEngine:
     (vertical shake for volume control).
     """
     def __init__(self):
+        self.reset()
+
+    def reset(self):
         self._last_gesture = None
         self._last_gesture_time = 0
         self._cooldown = 0.8  # Seconds before the same gesture can trigger again
@@ -16,7 +19,7 @@ class GestureEngine:
         # Used when three_fingers_up is held to determine shake direction
         self._shake_history = deque(maxlen=20)  # (timestamp, y_value)
         self._last_shake_time = 0
-        self._shake_cooldown = 0.5
+        self._shake_cooldown = 0.1
 
     def detect_static_gesture(self, landmarks):
         """
@@ -74,8 +77,9 @@ class GestureEngine:
         thumb_out  = abs(thumb_tip['x'] - index_pip['x']) > abs(thumb_ip['x'] - index_pip['x'])
 
         # ── Counts ────────────────────────────────────────────────────────────
-        up_count   = sum([index_up, middle_up, ring_up, pinky_up])
-        down_count = sum([index_down, middle_down, ring_down, pinky_down])
+        # Finger-up count (excluding thumb for specific poses, but tracked for general)
+        up_count = sum([index_up, middle_up, ring_up, pinky_up])
+        phys_up_count = up_count + (1 if thumb_up or thumb_out else 0)
 
         # ── Classify ──────────────────────────────────────────────────────────
         gesture    = "none"
@@ -85,38 +89,38 @@ class GestureEngine:
             gesture    = "open_palm"
             confidence = 0.95
 
+        elif index_up and pinky_up and not middle_up and not ring_up:
+            # Rock sign works regardless of thumb (🤟 or 🤘)
+            gesture    = "rock_sign"
+            confidence = 0.95
+
+        elif (index_up and middle_up and ring_up and not pinky_up) or (thumb_out and index_up and middle_up and not ring_up and not pinky_up):
+            # 3 fingers (Index+Middle+Ring) OR (Thumb+Index+Middle)
+            gesture    = "three_fingers_up"
+            confidence = 0.9
+
+        elif index_up and middle_up and not ring_up and not pinky_up:
+            gesture    = "peace_sign"
+            confidence = 0.95
+
+        elif index_up and not middle_up and not ring_up and not pinky_up:
+            gesture    = "one_index_up"
+            confidence = 0.95
+
+        elif (index_down and middle_down and ring_down and not pinky_up) or (thumb_out and index_down and middle_down and not ring_up and not pinky_up):
+            # 3 fingers pointing down: (Index+Middle+Ring) OR (Thumb+Index+Middle)
+            # We use 'elif' because we want this specific gesture to win over 'fist'
+            gesture    = "three_fingers_down"
+            confidence = 0.9
+
         elif up_count == 0:
-            if thumb_up and not thumb_out:
-                gesture    = "thumbs_up"
-                confidence = 0.85
-            else:
+            # General low-finger-count poses
+            if not thumb_up and not thumb_out:
                 gesture    = "fist"
                 confidence = 0.9
-
-        elif up_count == 1 and index_up and not middle_up and not ring_up and not pinky_up:
-            # Only index finger up — used for Camera Mode voice activation
-            gesture    = "one_index_up"
-            confidence = 0.9
-
-        elif up_count == 2 and index_up and middle_up:
-            # Distinguish between peace_sign and three_fingers_up
-            # Thumb is "out" if it's far from the index base or palm center
-            d_thumb_palm = abs(thumb_tip['x'] - landmarks[5]['x']) 
-            if d_thumb_palm > 0.08: 
-                gesture    = "three_fingers_up"
-                confidence = 0.9
-            else:
-                gesture    = "peace_sign"
-                confidence = 0.95
-
-        elif up_count == 2 and index_up and pinky_up:
-            gesture    = "rock_sign"
-            confidence = 0.9
-
-        elif down_count == 2 and index_down and middle_down:
-            if thumb_down or thumb_out:
-                gesture    = "three_fingers_down"
-                confidence = 0.9
+            elif thumb_up and not thumb_out:
+                gesture    = "thumbs_up"
+                confidence = 0.85
 
         elif index_left and middle_left and not ring_left and not pinky_left:
             # Thumb check relaxed as it usually naturally sticks out or follows
@@ -127,12 +131,11 @@ class GestureEngine:
             gesture    = "three_fingers_right"
             confidence = 0.9
 
-        # ── Shake detection (when three_fingers_up/down is held) ──────────────
-        if gesture in ("three_fingers_up", "three_fingers_down"):
-            shake = self._detect_vertical_shake(index_tip['y'])
-            if shake:
-                gesture    = shake   # "shake_up" or "shake_down"
-                confidence = 0.85
+        # ── Shake detection (secondary to static) ─────────────────────────────
+        shake = self._detect_vertical_shake(index_tip['y'])
+        if shake and gesture in ("three_fingers_up", "three_fingers_down", "peace_sign"):
+            gesture    = shake
+            confidence = 0.85
 
         # ── Cooldown ──────────────────────────────────────────────────────────
         current_time = time.time()
@@ -155,7 +158,7 @@ class GestureEngine:
         current_time = time.time()
         self._shake_history.append((current_time, y_value))
 
-        if len(self._shake_history) < 10:
+        if len(self._shake_history) < 8:
             return None
 
         if (current_time - self._last_shake_time) < self._shake_cooldown:
@@ -171,7 +174,7 @@ class GestureEngine:
 
         velocity = dy / dt  # normalized units/second
 
-        SHAKE_THRESHOLD = 0.6  # Fast enough vertical movement
+        SHAKE_THRESHOLD = 0.4  # Fast enough vertical movement
 
         if velocity < -SHAKE_THRESHOLD:
             # Moving up in image coords (y decreasing = hand moving up)

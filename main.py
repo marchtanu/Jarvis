@@ -6,6 +6,10 @@ import os
 # Set matplotlib backend to Agg to prevent hangs during mediapipe import
 os.environ['MPLBACKEND'] = 'Agg'
 
+import warnings
+# Silence Protobuf deprecation warning from Mediapipe
+warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf.symbol_database")
+
 import numpy as np
 
 import qasync
@@ -43,7 +47,7 @@ async def audio_loop(mic: Microphone, snap_detector: SnapDetector,
                 if chunk is not None:
                     await snap_detector.process_audio(chunk)
                     window.feed_audio(chunk)
-            await asyncio.sleep(0.001)
+            await asyncio.sleep(0.01)
     except (asyncio.CancelledError, RuntimeError):
         logger.info("Audio loop stopped.")
 
@@ -57,7 +61,7 @@ async def main():
     speech_recognizer = SpeechRecognizer()
 
     agent = JarvisAgent()
-    fsm = JarvisStateMachine(speech_recognizer, agent, snap_detector)
+    fsm = JarvisStateMachine(speech_recognizer, agent, mic, snap_detector)
     vision_worker = VisionWorker()
 
     # ── Build GUI ─────────────────────────────────────────────────────────

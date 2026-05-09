@@ -7,8 +7,12 @@ class MotionEngine:
     Analyzes hand movement over time to detect motion gestures (swipes, push, pull).
     """
     def __init__(self, history_size=15):
+        self._history_size = history_size
+        self.reset()
+
+    def reset(self):
         # Store tuples of (timestamp, x, y, size)
-        self._history = deque(maxlen=history_size)
+        self._history = deque(maxlen=self._history_size)
         self._cooldown = 1.0
         self._last_motion_time = 0
 

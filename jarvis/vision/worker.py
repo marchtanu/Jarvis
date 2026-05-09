@@ -1,3 +1,4 @@
+import pyautogui
 from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 from jarvis.core.event_bus import event_bus
 from .camera import Camera
@@ -59,7 +60,12 @@ class VisionWorker(QObject):
 
         # Camera mode: track whether index finger is currently raised
         self._index_up_active    = False
-        self._last_gesture_state = "none"
+        self._index_up_count     = 0
+        self._index_down_count   = 0
+        self._last_gesture_pub   = "none"
+        self._mode_switch_time   = 0.0
+        
+        pyautogui.FAILSAFE = False
 
         self.timer       = QTimer()
         self.timer.timeout.connect(self._process_frame)
@@ -106,6 +112,12 @@ class VisionWorker(QObject):
         self._hold_start      = None
         self._holding         = False
         self._index_up_active = False
+        self._last_gesture_pub = "none"
+        self._mode_switch_time = time.time()
+        
+        # Also reset engines to clear internal cooldowns/history
+        self.gesture_engine.reset()
+        self.motion_engine.reset()
         
         logger.info(f"Vision mode set to: {self._vision_mode}")
 
@@ -140,10 +152,8 @@ class VisionWorker(QObject):
 
     def stop(self):
         if self.running:
-            try:
-                self.timer.stop()
-            except RuntimeError:
-                pass
+            from PyQt6.QtCore import QMetaObject, Qt
+            QMetaObject.invokeMethod(self.timer, "stop", Qt.ConnectionType.QueuedConnection)
             self.camera.stop()
             self.running = False
             logger.info("Vision Worker stopped.")
@@ -170,7 +180,7 @@ class VisionWorker(QObject):
         m_conf     = 0.0
         two_hands_open = False
 
-        if self.enable_hand_tracking:
+        if self.enable_hand_tracking and self._vision_mode != self.MODE_NONE:
             rgb_annotated_frame, hand_landmarks = self.hand_tracker.process_frame(rgb_annotated_frame)
 
             # Two-hand open palm check (CANCEL_ALL — works in any mode)
@@ -262,14 +272,27 @@ class VisionWorker(QObject):
 
     def _handle_camera_mode_index(self, gesture: str):
         """Publish TEMP_VOICE_START / TEMP_VOICE_END when index is raised/lowered."""
+        if self._vision_mode != self.MODE_CAMERA:
+            return
+            
         currently_up = (gesture == "one_index_up")
 
-        if currently_up and not self._index_up_active:
+        # Debounce logic: 5 frames up to start, 10 frames down to end
+        if currently_up:
+            self._index_up_count += 1
+            self._index_down_count = 0
+        else:
+            self._index_down_count += 1
+            self._index_up_count = 0
+
+        if self._index_up_count >= 5 and not self._index_up_active:
             self._index_up_active = True
+            logger.info("Index Up confirmed (5 frames). Starting temp voice.")
             asyncio.create_task(event_bus.publish("TEMP_VOICE_START", {}))
 
-        elif not currently_up and self._index_up_active:
+        elif self._index_down_count >= 10 and self._index_up_active:
             self._index_up_active = False
+            logger.info("Index Down confirmed (10 frames). Ending temp voice.")
             asyncio.create_task(event_bus.publish("TEMP_VOICE_END", {}))
 
     # ── Control Mode: cursor + click + hold ──────────────────────────────────
@@ -281,8 +304,8 @@ class VisionWorker(QObject):
         - Click: index/middle pinch thumb (tap)
         - Drag: index/middle pinch thumb (hold)
         """
-        import pyautogui
-        pyautogui.FAILSAFE = False
+        if len(landmarks) < 21:
+            return
 
         thumb_tip  = landmarks[4]
         index_tip  = landmarks[8]

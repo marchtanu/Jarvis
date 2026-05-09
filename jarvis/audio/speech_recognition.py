@@ -2,6 +2,7 @@ import logging
 import asyncio
 import json
 import time
+import queue
 import numpy as np
 try:
     import vosk
@@ -51,11 +52,11 @@ class SpeechRecognizer:
             #     return False
             return False
 
-    def _listen_blocking(self, timeout: float, phrase_time_limit: float, grammar: list = None, validator: callable = None) -> str | None:
+    def _listen_blocking(self, timeout: float, phrase_time_limit: float, grammar: list = None, validator: callable = None, cancel_event: asyncio.Event = None, mic=None) -> str | None:
         if not self._use_vosk:
             return self._listen_google_blocking(timeout, phrase_time_limit)
 
-        text, audio_buffer = self._listen_vosk_blocking(timeout, phrase_time_limit, grammar)
+        text, audio_buffer = self._listen_vosk_blocking(timeout, phrase_time_limit, grammar, cancel_event, mic)
         
         # Fallback Logic:
         # If Vosk returned nothing, OR if a validator is provided and says the text isn't a valid command,
@@ -74,7 +75,7 @@ class SpeechRecognizer:
         
         return text
 
-    def _listen_vosk_blocking(self, timeout: float, phrase_time_limit: float, grammar: list = None) -> tuple[str | None, bytes | None]:
+    def _listen_vosk_blocking(self, timeout: float, phrase_time_limit: float, grammar: list = None, cancel_event: asyncio.Event = None, mic=None) -> tuple[str | None, bytes | None]:
         """Local Vosk recognition loop. Returns (text, raw_audio_buffer)."""
         import sounddevice as sd
         audio_buffer = bytearray()
@@ -85,28 +86,66 @@ class SpeechRecognizer:
             else:
                 rec = self.rec
 
-            with sd.RawInputStream(samplerate=config.SAMPLERATE, blocksize=8000, dtype='int16',
-                                  channels=1, device=config.MIC_DEVICE_INDEX) as stream:
-                logger.info("Vosk is listening...")
-                start_time = time.time()
-                
-                while time.time() - start_time < timeout:
-                    data, overflowed = stream.read(4000)
-                    audio_buffer.extend(data)
-                    
-                    if rec.AcceptWaveform(bytes(data)):
-                        result = json.loads(rec.Result())
-                        text = result.get("text", "")
-                        if text:
-                            logger.info(f'Vosk Recognized: "{text}"')
-                            return text, bytes(audio_buffer)
-                
-                # Final check after timeout
-                result = json.loads(rec.FinalResult())
-                text = result.get("text", "")
-                if text:
-                    logger.info(f'Vosk Recognized (Final): "{text}"')
-                return (text if text else None), bytes(audio_buffer)
+            # Use shared mic if provided, otherwise open own stream
+            if mic:
+                logger.info("Vosk is listening (shared stream)...")
+                q = mic.subscribe()
+                try:
+                    start_time = time.time()
+                    while time.time() - start_time < timeout:
+                        if cancel_event and cancel_event.is_set():
+                            logger.info("Vosk listening cancelled by event.")
+                            break
+                        
+                        try:
+                            # 0.1s wait to stay responsive to cancel_event
+                            data = q.get(timeout=0.1)
+                            # Convert float32 from sounddevice to int16 for Vosk
+                            if data.dtype != np.int16:
+                                data_int16 = (data * 32767).astype(np.int16)
+                            else:
+                                data_int16 = data
+                            
+                            chunk_bytes = data_int16.tobytes()
+                            audio_buffer.extend(chunk_bytes)
+                            
+                            if rec.AcceptWaveform(chunk_bytes):
+                                result = json.loads(rec.Result())
+                                text = result.get("text", "")
+                                if text:
+                                    logger.info(f'Vosk Recognized: "{text}"')
+                                    return text, bytes(audio_buffer)
+                        except queue.Empty:
+                            continue
+                finally:
+                    mic.unsubscribe(q)
+            else:
+                # Fallback to creating own stream (not recommended if shared mic exists)
+                with sd.RawInputStream(samplerate=config.SAMPLERATE, blocksize=8000, dtype='int16',
+                                    channels=1, device=config.MIC_DEVICE_INDEX) as stream:
+                    logger.info("Vosk is listening (dedicated stream)...")
+                    start_time = time.time()
+                    while time.time() - start_time < timeout:
+                        if cancel_event and cancel_event.is_set():
+                            logger.info("Vosk listening cancelled by event.")
+                            break
+                        
+                        data, overflowed = stream.read(4000)
+                        audio_buffer.extend(data)
+                        
+                        if rec.AcceptWaveform(bytes(data)):
+                            result = json.loads(rec.Result())
+                            text = result.get("text", "")
+                            if text:
+                                logger.info(f'Vosk Recognized: "{text}"')
+                                return text, bytes(audio_buffer)
+
+            # Final check after timeout
+            result = json.loads(rec.FinalResult())
+            text = result.get("text", "")
+            if text:
+                logger.info(f'Vosk Recognized (Final): "{text}"')
+            return (text if text else None), bytes(audio_buffer)
                 
         except Exception as e:
             logger.error(f"Vosk recognition error: {e}")
@@ -148,16 +187,15 @@ class SpeechRecognizer:
         return None
 
     async def listen_for_command(
-        self, timeout: float = 10.0, phrase_time_limit: float = 10.0, grammar: list = None, validator: callable = None
+        self, timeout: float = 10.0, phrase_time_limit: float = 10.0, grammar: list = None, validator: callable = None, cancel_event: asyncio.Event = None, mic=None
     ) -> str | None:
         """
         Listens for a command. 
-        If grammar is provided, Vosk is restricted to those words.
-        If validator is provided, it checks if the text is a valid command; if not, falls back to Google.
+        If mic is provided, it uses the shared stream.
         """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
-            None, lambda: self._listen_blocking(timeout, phrase_time_limit, grammar, validator)
+            None, lambda: self._listen_blocking(timeout, phrase_time_limit, grammar, validator, cancel_event, mic)
         )
 
     def process_chunk(self, audio_data) -> str | None:

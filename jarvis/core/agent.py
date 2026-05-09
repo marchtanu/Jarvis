@@ -240,7 +240,7 @@ class JarvisAgent:
         keywords_to_check = [
             "volume up", "volume down", "mute", "time", "what time",
             "status", "cpu", "ram", "open browser", "browser",
-            "sleep", "goodbye", "goodnight", "help", "commands",
+            "sleep", "goodbye", "goodnight", "good night", "good bye", "goodbye jojo", "goodnight jojo", "help", "commands",
             "vision up", "vison up", "camera up", "start camera", "turn on camera",
             "vision on", "activate vision", "open vision", "vision panel",
             "show vision", "open camera", "camera open", "camera mode",
@@ -346,7 +346,7 @@ class JarvisAgent:
             (["time", "what time"],       tell_time),
             (["status", "cpu", "ram"],    system_status),
             (["open browser", "browser"], open_browser),
-            (["sleep", "goodbye", "goodnight"], sleep_mode),
+            (["sleep", "goodbye", "goodnight", "good night", "good bye", "goodbye jojo", "goodnight jojo"], sleep_mode),
             (["help", "commands"],        get_help),
             (["vision up", "vison up", "camera up", "start camera", "turn on camera",
               "vision on", "activate vision", "open vision", "vision panel",

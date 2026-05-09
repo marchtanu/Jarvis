@@ -42,7 +42,7 @@ class SnapDetector:
         if len(self.energy_history) > self.history_size:
             self.energy_history.pop(0)
             
-        avg_energy = np.mean(self.energy_history)
+        avg_energy = max(np.mean(self.energy_history), 0.001)
         
         # Detection logic
         current_time = time.time()

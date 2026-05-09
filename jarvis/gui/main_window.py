@@ -1,4 +1,5 @@
 import asyncio
+import numpy as np
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QApplication
 from PyQt6.QtCore import Qt
 
@@ -168,6 +169,5 @@ class JarvisMainWindow(QMainWindow):
         self.left_panel.update_snaps(self._snap_count)
 
     def feed_audio(self, chunk):
-        import numpy as np
         energy = float(np.sqrt(np.mean(chunk ** 2)))
         self.center_panel.waveform.add_energy(energy)

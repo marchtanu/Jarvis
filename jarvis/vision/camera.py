@@ -33,6 +33,11 @@ class Camera:
         if self._running:
             return
         self.capture = cv2.VideoCapture(self.camera_index)
+        if not self.capture.isOpened():
+            logger.error(f"Failed to open camera with index {self.camera_index}")
+            self._running = False
+            return
+            
         # Try to set properties for smooth capture
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -84,7 +89,7 @@ class Camera:
                         self._start_time = time.time()
 
             # A small sleep to yield thread execution
-            cv2.waitKey(max(1, int(1000 / self.target_fps)))
+            time.sleep(0.01)
 
     def get_frame(self) -> np.ndarray | None:
         with self._lock:
