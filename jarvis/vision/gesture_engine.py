@@ -107,20 +107,15 @@ class GestureEngine:
             gesture    = "one_index_up"
             confidence = 0.95
 
-        elif (index_down and middle_down and ring_down and not pinky_up) or (thumb_out and index_down and middle_down and not ring_up and not pinky_up):
-            # 3 fingers pointing down: (Index+Middle+Ring) OR (Thumb+Index+Middle)
-            # We use 'elif' because we want this specific gesture to win over 'fist'
+        elif (index_down and middle_down and ring_down and pinky_up) or (thumb_out and index_down and middle_down and not ring_up and pinky_up):
+            # 3 fingers pointing down + Pinky UP: Distinct from a fist
             gesture    = "three_fingers_down"
             confidence = 0.9
 
         elif up_count == 0:
-            # General low-finger-count poses
-            if not thumb_up and not thumb_out:
-                gesture    = "fist"
-                confidence = 0.9
-            elif thumb_up and not thumb_out:
-                gesture    = "thumbs_up"
-                confidence = 0.85
+            # General low-finger-count poses: default to fist
+            gesture    = "fist"
+            confidence = 0.9
 
         elif index_left and middle_left and not ring_left and not pinky_left:
             # Thumb check relaxed as it usually naturally sticks out or follows

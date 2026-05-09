@@ -427,9 +427,10 @@ class VisionWorker(QObject):
                 asyncio.create_task(event_bus.publish("USER_ABSENT", attention_data))
             self._last_attention = attention_data["attention_state"]
 
-        # Gesture events — skip cursor_mode placeholder
+        # Gesture events — allow repeats for interactive gestures (volume/tracks)
         if gesture not in ("none", "cursor_mode"):
-            if gesture != self._last_gesture_pub:
+            is_interactive = "three_fingers" in gesture or gesture == "peace_sign"
+            if gesture != self._last_gesture_pub or is_interactive:
                 if g_conf >= 0.7:
                     if gesture == "double_open_palm":
                         asyncio.create_task(event_bus.publish("CANCEL_ALL", {}))

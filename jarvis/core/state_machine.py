@@ -323,47 +323,39 @@ class JarvisStateMachine:
             logger.info("Temp voice listening deactivated.")
 
     async def _temp_voice_listen(self):
-        """Non-blocking temporary voice capture while index finger is raised."""
-        if self.state != State.CAMERA_MODE:
-            return
+        """Looping voice capture while index finger is raised in Camera Mode."""
+        while self._temp_voice_active and self.state == State.CAMERA_MODE:
+            await event_bus.publish("JARVIS_RESPONSE", {
+                "text": "Listening...",
+                "type": "info",
+            })
+            text = await self.speech_recognizer.listen_for_command(
+                timeout=5.0,
+                phrase_time_limit=5.0,
+                validator=self.agent.is_valid_command,
+                cancel_event=self._temp_voice_cancel_event,
+                mic=self.mic
+            )
+            
+            if self._temp_voice_cancel_event.is_set():
+                logger.info("Ignoring temp voice result — finger was lowered.")
+                break
 
-        await event_bus.publish("JARVIS_RESPONSE", {
-            "text": "Listening briefly...",
-            "type": "info",
-        })
-        text = await self.speech_recognizer.listen_for_command(
-            timeout=5.0,
-            phrase_time_limit=5.0,
-            validator=self.agent.is_valid_command,
-            cancel_event=self._temp_voice_cancel_event,
-            mic=self.mic
-        )
-        
-        # Double check if we should still process this (user might have lowered finger)
-        if self._temp_voice_cancel_event.is_set():
-            logger.info("Ignoring temp voice result — finger was lowered.")
-            return
-
-        if text and self.state == State.CAMERA_MODE:
-            await event_bus.publish("SPEECH_RECOGNIZED", {"text": text})
-            # Allow a small set of commands while in camera mode
-            if text and (text.strip().lower() == config.EXIT_PHRASE or "terminate program" in text.lower()):
-                await event_bus.publish("JARVIS_RESPONSE", {
-                    "text": "Exit command ignored. You must be in Sleep Mode to exit.",
-                    "type": "warning"
-                })
-
-            elif config.SHUTDOWN_PHRASE in text or "goodnight" in text.lower():
-                await self._on_enter_sleep_mode({})
-            elif any(kw in text.lower() for kw in ["camera off", "vision off", "close camera", "stop camera"]):
-                await self._on_exit_sub_mode({})
-            else:
-                # IMPORTANT: Only execute if it's a real command to avoid 
-                # jumping into Voice Mode for background noise.
-                logger.info(f"Processing temp voice command: {text}")
-                await self._process_command(text)
-
-        self._temp_voice_active = False
+            if text and self.state == State.CAMERA_MODE:
+                await event_bus.publish("SPEECH_RECOGNIZED", {"text": text})
+                if config.SHUTDOWN_PHRASE in text or "goodnight" in text.lower():
+                    await self._on_enter_sleep_mode({})
+                    break
+                elif any(kw in text.lower() for kw in ["camera off", "vision off", "close camera", "stop camera"]):
+                    await self._on_exit_sub_mode({})
+                    break
+                else:
+                    logger.info(f"Processing temp voice command: {text}")
+                    await self._process_command(text)
+                    # Loop continues if we are still in CAMERA_MODE
+            
+            # Small delay before next listen to avoid tight loops
+            await asyncio.sleep(0.2)
 
     # ── Control Mode ──────────────────────────────────────────────────────────
 
@@ -490,7 +482,7 @@ class JarvisStateMachine:
         # Volume Up: Static pose (three_fingers_up) OR rapid shake
         if gesture in ("three_fingers_up", "shake_up"):
             vol_cooldown = current_time - self._last_volume_time
-            if vol_cooldown > 0.1: # Continuous feel
+            if vol_cooldown > 0.2: 
                 self._last_volume_time = current_time
                 pyautogui.press('volumeup')
                 asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "🔊 Volume Up"}))
@@ -499,7 +491,7 @@ class JarvisStateMachine:
         # Volume Down: Static pose (three_fingers_down) OR rapid shake
         elif gesture in ("three_fingers_down", "shake_down"):
             vol_cooldown = current_time - self._last_volume_time
-            if vol_cooldown > 0.1:
+            if vol_cooldown > 0.2:
                 self._last_volume_time = current_time
                 pyautogui.press('volumedown')
                 asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "🔉 Volume Down"}))
