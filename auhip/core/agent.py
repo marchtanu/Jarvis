@@ -21,209 +21,92 @@ load_dotenv()
 
 class AuhipAgent:
     """
-    The LLM Brain of auhip using Google Gemini via raw REST API.
-    Reads identity.md to build a system prompt, then routes voice commands
-    through Gemini (function-calling) or falls back to local skill matching.
+    The hybrid local-first brain of AUHIP. Uses swappable local and cloud LLMs
+    orchestrated through the HybridLLMRouter and centralized ToolManager.
     """
 
     def __init__(self):
-        self.api_key = os.getenv("GOOGLE_API_KEY")
+        from auhip.core.llm import ContextManager, HybridLLMRouter, ToolManager, ToolSchema
+        
+        self.tool_manager = ToolManager()
+        self.context_manager = ContextManager()
+        self.router = HybridLLMRouter(self.tool_manager, self.context_manager)
+        
+        # Backward compatibility flag
+        self.client = True
 
-        if not self.api_key or self.api_key.strip() in ("", "your-api-key-here"):
-            logger.warning("GOOGLE_API_KEY not configured. Running in local fallback mode.")
-            self.client = None
-        else:
-            self.client = True # Flag to indicate AI mode
-            self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={self.api_key}"
-            self.system_prompt = self._build_system_prompt()
-            
-            # Mapping for manual dispatch
-            self.available_tools: Dict[str, Callable] = {
-                "activate_home_mode": activate_home_mode,
-                "sleep_mode":          sleep_mode,
-                "system_status":       system_status,
-                "open_browser":        open_browser,
-                "tell_time":           tell_time,
-                "volume_up":           volume_up,
-                "volume_down":         volume_down,
-                "mute_volume":         mute_volume,
-                "search_web":          search_web,
-                "get_help":            get_help,
-            }
+        # Register tools cleanly
+        self._register_all_tools()
+        logger.info("Hybrid local-first orchestration layer initialised.")
 
-            # Gemini tool schema
-            self.tools_schema = [{
-                "functionDeclarations": [
-                    {
-                        "name": "activate_home_mode",
-                        "description": "Run when the user arrives home. Sets the mood and confirms readiness."
-                    },
-                    {
-                        "name": "sleep_mode",
-                        "description": "Enter sleep/standby. Called when the user dismisses auhip for the night."
-                    },
-                    {
-                        "name": "system_status",
-                        "description": "Return current CPU usage, RAM usage, and network status."
-                    },
-                    {
-                        "name": "open_browser",
-                        "description": "Open the system's default web browser."
-                    },
-                    {
-                        "name": "tell_time",
-                        "description": "Return the current local time."
-                    },
-                    {
-                        "name": "volume_up",
-                        "description": "Increase system audio volume by one step."
-                    },
-                    {
-                        "name": "volume_down",
-                        "description": "Decrease system audio volume by one step."
-                    },
-                    {
-                        "name": "mute_volume",
-                        "description": "Toggle system audio mute."
-                    },
-                    {
-                        "name": "search_web",
-                        "description": "Search Google for a query and open the results in the browser.",
-                        "parameters": {
-                            "type": "OBJECT",
-                            "properties": {
-                                "query": {
-                                    "type": "STRING",
-                                    "description": "The search query string."
-                                }
-                            },
-                            "required": ["query"]
-                        }
-                    },
-                    {
-                        "name": "get_help",
-                        "description": "Lists all available commands and their descriptions."
-                    }
-                ]
-            }]
-
-            self.conversation_history = []
-            logger.info("Gemini AI REST client initialised.")
-
-    def _build_system_prompt(self) -> str:
-        """Compose the system prompt from a preamble + the full identity.md."""
-        preamble = (
-            "You are auhip, an elite executive AI assistant. "
-            "The following profile defines your persona, communication style, "
-            "and responsibilities. Internalise it completely.\n\n"
-            "OPERATIONAL RULES:\n"
-            "- Address the user as 'Master' unless context suggests otherwise.\n"
-            "- Be direct, concise, and high signal-to-noise. No fluff.\n"
-            "- Prioritise correctness over agreement. Challenge weak reasoning.\n"
-            "- When a tool is available and relevant, USE IT without asking permission.\n"
-            "- After executing a tool, report the result in one short sentence.\n"
-            "- If no tool applies, respond conversationally but keep it brief.\n\n"
-            "=== USER IDENTITY PROFILE ===\n"
+    def _register_all_tools(self):
+        from auhip.core.llm import ToolSchema
+        
+        self.tool_manager.register_tool(
+            ToolSchema("activate_home_mode", "Run when the user arrives home. Sets the mood and confirms readiness."),
+            activate_home_mode
         )
-        identity = self._load_identity()
-        return preamble + identity
+        self.tool_manager.register_tool(
+            ToolSchema("sleep_mode", "Enter sleep/standby. Called when the user dismisses auhip for the night."),
+            sleep_mode
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("system_status", "Return current CPU usage, RAM usage, and network status."),
+            system_status
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("open_browser", "Open the system's default web browser."),
+            open_browser
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("tell_time", "Return the current local time."),
+            tell_time
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("volume_up", "Increase system audio volume by one step."),
+            volume_up
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("volume_down", "Decrease system audio volume by one step."),
+            volume_down
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("mute_volume", "Toggle system audio mute."),
+            mute_volume
+        )
+        self.tool_manager.register_tool(
+            ToolSchema(
+                "search_web", 
+                "Search Google for a query and open the results in the browser.",
+                parameters={"query": {"type": "string", "description": "The search query string."}},
+                required=["query"]
+            ),
+            search_web
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("get_help", "Lists all available commands and their descriptions."),
+            get_help
+        )
 
-    def _load_identity(self) -> str:
-        """Load user/identity.md relative to the project root."""
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        identity_path = os.path.join(project_root, "user", "identity.md")
-        try:
-            with open(identity_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            logger.info(f"Loaded identity profile ({len(content)} chars).")
-            return content
-        except Exception as e:
-            logger.error(f"Could not load identity.md: {e}")
-            return "(No identity profile found.)"
+    def set_mode(self, mode: str):
+        """Pass updated active context mode down to hybrid routing layer."""
+        self.router.set_mode(mode)
 
     async def execute(self, user_text: str) -> str:
         """Route a transcribed voice command. Checks local skills first to minimize LLM usage."""
         
-        # 1. Try local routing first to minimize AI costs/latency
+        # 1. Try local routing first to minimize latency
         local_response = await self._local_route(user_text)
         if local_response:
             logger.info(f"Local skill matched for: '{user_text}'")
             return local_response
 
-        # 2. Fall back to LLM if no local match
-        if not self.client:
-            return "No local skill matched and AI core is unconfigured."
-        
+        # 2. Dispatch to Hybrid LLM Router
         try:
-            self.conversation_history.append({"role": "user", "parts": [{"text": user_text}]})
-            
-            # Keep history manageable (last 10 turns)
-            if len(self.conversation_history) > 10:
-                self.conversation_history = self.conversation_history[-10:]
-
-            payload = {
-                "systemInstruction": {"parts": [{"text": self.system_prompt}]},
-                "contents": self.conversation_history,
-                "tools": self.tools_schema,
-            }
-
-            headers = {"Content-Type": "application/json"}
-
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self.api_url, headers=headers, json=payload) as resp:
-                    if resp.status != 200:
-                        error_text = await resp.text()
-                        logger.error(f"Gemini API error ({resp.status}): {error_text}")
-                        return "Neural core error. Local fallback failed."
-                    
-                    data = await resp.json()
-
-            if "candidates" not in data or not data["candidates"]:
-                return "I received an empty response from my neural core."
-
-            part = data["candidates"][0]["content"]["parts"][0]
-            
-            if "functionCall" in part:
-                call = part["functionCall"]
-                name = call["name"]
-                args = call.get("args", {})
-                
-                logger.info(f"Gemini requested tool: {name}")
-                func = self.available_tools.get(name)
-                
-                if func:
-                    result = await func(**args)
-                    
-                    # Append assistant's function call
-                    self.conversation_history.append({
-                        "role": "model",
-                        "parts": [{"functionCall": call}]
-                    })
-                    
-                    # Send result back
-                    self.conversation_history.append({
-                        "role": "function",
-                        "parts": [{"functionResponse": {"name": name, "response": {"result": str(result)}}}]
-                    })
-                    
-                    payload["contents"] = self.conversation_history
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(self.api_url, headers=headers, json=payload) as resp:
-                            if resp.status == 200:
-                                followup_data = await resp.json()
-                                if "candidates" in followup_data:
-                                    final_text = followup_data["candidates"][0]["content"]["parts"][0].get("text", "")
-                                    self.conversation_history.append({"role": "model", "parts": [{"text": final_text}]})
-                                    return final_text
-                            return f"Tool executed successfully: {result}"
-
-            text = part.get("text", "")
-            self.conversation_history.append({"role": "model", "parts": [{"text": text}]})
-            return text
-
+            return await self.router.execute(user_text)
         except Exception as e:
-            logger.error(f"Gemini execution error: {e}")
-            return "Error in neural core. Please check logs."
+            logger.error(f"Router core execution error: {e}")
+            return "Error in neural orchestration layer. Please check logs."
 
     def is_valid_command(self, user_text: str) -> bool:
         """

@@ -1,4 +1,4 @@
-# Jarvis Architecture Reference (For AI Agents)
+# auhip Architecture Reference (For AI Agents)
 
 > **Purpose:** This document gives any AI coding assistant instant context to work on this project
 > efficiently without re-analyzing the entire codebase. Read this FIRST before making changes.
@@ -14,7 +14,7 @@
 | **Event System** | Custom async EventBus (pub/sub) |
 | **Speech** | Vosk (local, primary) + Google Cloud (fallback) |
 | **Vision** | MediaPipe (Hands + FaceMesh) via OpenCV |
-| **AI Brain** | Google Gemini Flash (REST API, function calling) |
+| **AI Brain** | Hybrid Engine: Ollama Local (Primary) + Gemini Flash Escalation |
 | **Entry Point** | `main.py` |
 
 ---
@@ -23,16 +23,28 @@
 
 ```
 main.py                          ← Entry point: creates QApp, event loop, wires components
-├── jarvis/core/
+├── auhip/core/
 │   ├── config.py                ← Dataclass with all constants (audio, phrases, timeouts)
 │   ├── event_bus.py             ← Singleton async pub/sub system
-│   ├── agent.py                 ← LLM brain: local keyword router + Gemini function-calling
-│   └── state_machine.py         ← Central FSM: all state transitions, gesture handlers
-├── jarvis/audio/
+│   ├── agent.py                 ← Outer agent integration delegating core decisions to router
+│   ├── state_machine.py         ← Central FSM: all state transitions, gesture handlers
+│   └── llm/                     ← Production-grade hybrid LLM subsystem
+│       ├── base.py              ← Base interface for providers
+│       ├── config.py            ← Sandbox folder settings, tokens, timeouts, endpoints
+│       ├── types.py             ← Pydantic/Dataclass routing output templates
+│       ├── local_model.py       ← Local non-blocking Ollama client adapter
+│       ├── cloud_model.py       ← Cloud Gemini escalation provider client
+│       ├── router.py            ← Core async execution router and controller
+│       ├── tool_manager.py      ← Secure schema validator and sandboxed tool wrapper
+│       ├── context_manager.py   ← Rolling context memory token compressor
+│       ├── prompt_builder.py    ← Instruction builder linking mode status flags
+│       ├── response_parser.py   ← Fallback repair heuristic parser for unstructured text
+│       └── escalation.py        ← Decides local-to-cloud fallback promotion necessity
+├── auhip/audio/
 │   ├── microphone.py            ← sounddevice InputStream wrapper
 │   ├── snap_detector.py         ← Adaptive threshold snap detection
 │   └── speech_recognition.py    ← Vosk + Google Cloud hybrid recognizer
-├── jarvis/vision/
+├── auhip/vision/
 │   ├── worker.py                ← QTimer-driven frame processor, mode router
 │   ├── camera.py                ← Threaded cv2.VideoCapture with zoom
 │   ├── tracker.py               ← MediaPipe Hands wrapper
@@ -44,7 +56,7 @@ main.py                          ← Entry point: creates QApp, event loop, wire
 │   ├── attention_engine.py      ← Behavioral state from gaze + blink patterns
 │   ├── calibration.py           ← Gaze calibration with outlier trimming
 │   └── types.py                 ← TypedDicts for EyeData, BlinkData, GazeData, etc.
-├── jarvis/gui/
+├── auhip/gui/
 │   ├── theme.py                 ← Color tokens, state colors, global stylesheet
 │   ├── main_window.py           ← QMainWindow: layout + event-to-UI bridge
 │   └── components/
@@ -55,19 +67,17 @@ main.py                          ← Entry point: creates QApp, event loop, wire
 │       ├── state_panel.py       ← Custom-painted state indicator with breathing glow
 │       ├── vision_panel.py      ← Camera feed display + data overlays
 │       ├── waveform_widget.py   ← Real-time audio energy visualization
-│       ├── transcript_panel.py  ← Live speech transcript (USER / JARVIS)
-│       ├── response_panel.py    ← Jarvis response display
+│       ├── transcript_panel.py  ← Live speech transcript (USER / AUHIP)
+│       ├── response_panel.py    ← auhip response display
 │       ├── history_panel.py     ← Command execution history list
 │       ├── active_commands_panel.py ← Mode-aware command list with glow animations
 │       ├── last_command_widget.py   ← Fading last-action indicator in nav bar
 │       └── debug_panel.py       ← Developer tools: mode buttons, feature toggles, hw selectors
-├── jarvis/skills/
+├── auhip/skills/
 │   ├── __init__.py              ← Exports all skill functions
 │   ├── home_automation.py       ← activate_home_mode()
 │   ├── system_controls.py       ← sleep_mode, system_status, volume, browser
 │   └── information.py           ← tell_time, search_web, get_help
-├── jarvis/commands/
-│   └── registry.py              ← LEGACY: unused CommandRegistry (can be deleted)
 └── user/
     └── identity.md              ← Persona definition for LLM system prompt
 ```
@@ -142,17 +152,16 @@ SLEEP ──[open_palm → fist]──→ SHUTDOWN (emergency, 5s cooldown)
 
 ## Adding a New Voice Command
 
-1. **Add skill function** in `jarvis/skills/` (async, returns str)
-2. **Export** in `jarvis/skills/__init__.py`
-3. **Register in Agent** (`jarvis/core/agent.py`):
-   - Add to `self.available_tools` dict
-   - Add to `self.tools_schema` (Gemini function declaration)
+1. **Add skill function** in `auhip/skills/` (async, returns str)
+2. **Export** in `auhip/skills/__init__.py`
+3. **Register in ToolManager** (`auhip/core/agent.py`):
+   - Register securely using `ToolSchema` via `self.tool_manager.register_tool()`
    - Add keyword(s) to `_local_route()` mapping for instant local dispatch
    - Add keyword(s) to `is_valid_command()` for speech fallback validation
 
 ## Adding a New Gesture
 
-1. **Add detection logic** in `jarvis/vision/gesture_engine.py` → `detect_static_gesture()`
+1. **Add detection logic** in `auhip/vision/gesture_engine.py` → `detect_static_gesture()`
 2. **Handle in StateMachine** → `on_gesture_detected()` or `_handle_camera_gesture()`
 3. **Update ActiveCommandsPanel** → add to `mode_commands` dict
 4. **Update FEATURES.md** → add to gesture reference tables

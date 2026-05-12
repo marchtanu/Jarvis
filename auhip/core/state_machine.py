@@ -118,6 +118,8 @@ class AuhipStateMachine:
             "message": message,
         })
         await event_bus.publish("MODE_CHANGED", {"mode": self.state.name})
+        if hasattr(self.agent, "set_mode"):
+            self.agent.set_mode(self.state.name)
 
     # ── Snap Detection ────────────────────────────────────────────────────────
 
