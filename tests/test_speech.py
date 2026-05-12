@@ -13,7 +13,7 @@ import sys
 def main():
     r = sr.Recognizer()
 
-    print("=== Jarvis Speech Recognition Test ===")
+    print("=== auhip Speech Recognition Test ===")
     print("Using Google Web Speech API")
     print()
 

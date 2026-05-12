@@ -15,15 +15,15 @@ import numpy as np
 import qasync
 from PyQt6.QtWidgets import QApplication
 
-from jarvis.core.config import config
-from jarvis.core.event_bus import event_bus
-from jarvis.audio.microphone import Microphone
-from jarvis.audio.snap_detector import SnapDetector
-from jarvis.audio.speech_recognition import SpeechRecognizer
-from jarvis.core.state_machine import JarvisStateMachine
-from jarvis.core.agent import JarvisAgent
-from jarvis.gui.main_window import JarvisMainWindow
-from jarvis.vision.worker import VisionWorker
+from auhip.core.config import config
+from auhip.core.event_bus import event_bus
+from auhip.audio.microphone import Microphone
+from auhip.audio.snap_detector import SnapDetector
+from auhip.audio.speech_recognition import SpeechRecognizer
+from auhip.core.state_machine import AuhipStateMachine
+from auhip.core.agent import AuhipAgent
+from auhip.gui.main_window import AuhipMainWindow
+from auhip.vision.worker import VisionWorker
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -34,11 +34,11 @@ logging.basicConfig(
         logging.FileHandler(config.LOG_FILE, encoding="utf-8"),
     ],
 )
-logger = logging.getLogger("Jarvis")
+logger = logging.getLogger("auhip")
 
 
 async def audio_loop(mic: Microphone, snap_detector: SnapDetector,
-                     window: JarvisMainWindow, debug_panel):
+                     window: AuhipMainWindow, debug_panel):
     """Continuously processes audio chunks for snap detection and waveform."""
     try:
         while True:
@@ -53,19 +53,19 @@ async def audio_loop(mic: Microphone, snap_detector: SnapDetector,
 
 
 async def main():
-    logger.info("Starting Jarvis Assistant...")
+    logger.info("Starting auhip Assistant...")
 
     # ── Initialize Components ─────────────────────────────────────────────
     mic = Microphone()
     snap_detector = SnapDetector()
     speech_recognizer = SpeechRecognizer()
 
-    agent = JarvisAgent()
-    fsm = JarvisStateMachine(speech_recognizer, agent, mic, snap_detector)
+    agent = AuhipAgent()
+    fsm = AuhipStateMachine(speech_recognizer, agent, mic, snap_detector)
     vision_worker = VisionWorker()
 
     # ── Build GUI ─────────────────────────────────────────────────────────
-    window = JarvisMainWindow(fsm, mic, vision_worker)
+    window = AuhipMainWindow(fsm, mic, vision_worker)
     window.hide()  # GUI activates on "daddy home" command
 
     # ── Start FSM ─────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ async def main():
     # Connect mic to GUI for hardware switching
     window.debug_panel.set_mic_instance(mic)
 
-    logger.info("Jarvis is ready.")
+    logger.info("auhip is ready.")
     logger.info(f"  Wake phrase    : '{config.WAKE_PHRASE}'")
     logger.info(f"  Shutdown phrase: '{config.SHUTDOWN_PHRASE}'")
 
@@ -98,12 +98,12 @@ async def main():
         snap_detector.stop()
         mic.stop()
         vision_worker.stop()
-        logger.info("Jarvis shut down.")
+        logger.info("auhip shut down.")
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setApplicationName("Jarvis Assistant")
+    app.setApplicationName("auhip Assistant")
 
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)

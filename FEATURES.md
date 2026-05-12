@@ -1,4 +1,4 @@
-# Jarvis AI Assistant — Mode Reference & Interaction Flow
+# auhip AI Assistant — Mode Reference & Interaction Flow
 
 > **Design Principle:** Only one primary interaction system dominates at a time — Voice, Camera, or Cursor Control. This prevents input conflicts, false triggers, and resource overload.
 
@@ -66,7 +66,7 @@ EMERGENCY (works in ALL states)
 | `"eye up"` / `"eye off"` | Toggle eye tracking |
 | `"hand up"` / `"hand off"` | Toggle hand tracking |
 | `"full screen"` / `"maximize"` | Toggle fullscreen |
-| `"minimize"` / `"minimize window"` | Minimize Jarvis to taskbar |
+| `"minimize"` / `"minimize window"` | Minimize auhip to taskbar |
 
 ### Rules
 - Always-listening voice recognition **active**

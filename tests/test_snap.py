@@ -73,7 +73,7 @@ def audio_callback(indata, frames, time_info, status):
                 print(f"\n[SNAP 1] (second was too slow {gap:.2f}s) — restarting ...")
 
 def main():
-    print("=== Jarvis Snap Detection Test ===")
+    print("=== auhip Snap Detection Test ===")
     print(f"Threshold multiplier : {SNAP_THRESHOLD_MULTIPLIER}x")
     print(f"Snap window          : {SNAP_WINDOW}s")
     print(f"Refractory period    : {SNAP_REFRACTORY_PERIOD}s")

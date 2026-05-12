@@ -1,11 +1,11 @@
-# Jarvis Assistant
+# auhip (an useless high intellegence program)
 
 A Python-based personal assistant with double-snap activation and offline voice command recognition.
 
 ## Features
 - **Real-time Listening**: Continuous microphone monitoring.
 - **Double-Snap Trigger**: Robust energy-based detection for "armed" mode.
-- **Hybrid Speech Recognition**: High-speed local Vosk engine with Google Cloud fallback. See [Speech Recognition Docs](jarvis/docs/speech_recognition.md).
+- **Hybrid Speech Recognition**: High-speed local Vosk engine with Google Cloud fallback. See [Speech Recognition Docs](auhip/docs/speech_recognition.md).
 - **Event-Driven Architecture**: Decoupled modules using an asynchronous event bus.
 - **FSM Management**: Clean state transitions (IDLE -> SNAP_1 -> ARMED -> LISTENING -> EXECUTING).
 
@@ -19,7 +19,7 @@ A Python-based personal assistant with double-snap activation and offline voice 
 2. **Download Vosk Model**:
    - Go to [Alphacephei Vosk Models](https://alphacephei.com/vosk/models).
    - Download a small English model (e.g., `vosk-model-small-en-us-0.15`).
-   - Extract it into the project root and rename the folder to `model` (or update `VOSK_MODEL_PATH` in `jarvis/core/config.py`).
+   - Extract it into the project root and rename the folder to `model` (or update `VOSK_MODEL_PATH` in `auhip/core/config.py`).
 
 ## Usage
 
@@ -35,7 +35,7 @@ python main.py
 
 ## Configuration
 
-Adjust thresholds in `jarvis/core/config.py`:
+Adjust thresholds in `auhip/core/config.py`:
 - `SNAP_THRESHOLD_MULTIPLIER`: Increase if getting false positives; decrease if snaps aren't detected.
 - `SNAP_REFRACTORY_PERIOD`: Time to wait after a snap before listening for another (prevents double-triggering on one snap).
 - `COMMAND_TIMEOUT`: How long to listen for a voice command.
