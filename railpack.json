@@ -1,0 +1,7 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "buildAptPackages": ["portaudio19-dev"],
+  "deploy": {
+    "aptPackages": ["libportaudio2"]
+  }
+}
